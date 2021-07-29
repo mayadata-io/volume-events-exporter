@@ -1,0 +1,10 @@
+linters-settings:
+  revive:
+    ignore-generated-header: true
+    severity: warning
+    rules:
+    ## No function should take more than 5 arguments
+    - name: argument-limit
+      severity: warning
+      arguments:
+      - 5

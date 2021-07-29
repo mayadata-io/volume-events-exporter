@@ -19,3 +19,6 @@ bin/
 
 # Ignore stamp files
 *-stamp
+
+# Test Coverage file
+coverage.txt

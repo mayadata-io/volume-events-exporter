@@ -14,17 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package app
+package cmd
 
 import (
 	"context"
 	"flag"
-	"os"
-	"strconv"
 	"sync"
-	"time"
 
-	pvcontroller "github.com/mayadata-io/volume-events-exporter/pkg/controller/pvcontroller"
+	"github.com/mayadata-io/volume-events-exporter/pkg/controller"
 	"github.com/mayadata-io/volume-events-exporter/pkg/signals"
 	leader "github.com/openebs/api/v2/pkg/kubernetes/leaderelection"
 	"github.com/pkg/errors"
@@ -36,9 +33,11 @@ import (
 )
 
 const (
-	// sharedInformerInterval is used to sync watcher controller.
-	sharedInformerInterval = 30 * time.Second
 	leaderElectionLockName = "volume-events-exporter"
+
+	// volumeEventControllerWorkers states no.of Go routines to
+	// process volume events
+	volumeEventControllerWorkers = 1
 )
 
 // Command line flags
@@ -55,8 +54,8 @@ const (
 	NumRoutinesThatFollow = 1
 )
 
-// Start will start volume metrics collector controller
-func Start() error {
+// StartVolumeEventsController will start volume events collector controller
+func StartVolumeEventsController() error {
 	klog.InitFlags(nil)
 	err := flag.Set("logtostderr", "true")
 	if err != nil {
@@ -76,54 +75,51 @@ func Start() error {
 	}
 
 	// NewSharedInformerFactory constructs a new instance of k8s sharedInformerFactory.
-	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, getSyncInterval())
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, controller.GetSyncInterval())
 	pvInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
 	pvcInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
-	pController := pvcontroller.NewPVMetricsController(pvcontroller.PVMetricsControllerConfig{
-		KubeClientset: kubeClient,
-		PVInformer:    pvInformer,
-		PVCInformer:   pvcInformer,
-	})
+	pController := controller.NewPVEventController(kubeClient, pvInformer, pvcInformer, volumeEventControllerWorkers)
 
 	// set up signals so we handle the first shutdown signal gracefully
 	stopCh := signals.SetupSignalHandler()
+	var wg sync.WaitGroup
 
-	run := func(context.Context) {
-		var wg sync.WaitGroup
-		wg.Add(3)
+	run := func(ctx context.Context) {
 
-		// Start PV informer
+		wg.Add(1)
+		// Start registered informers
 		go func() {
-			pvInformer.Informer().Run(stopCh)
+			kubeInformerFactory.Start(stopCh)
 			wg.Done()
 		}()
 
-		// Start PVC informer
-		go func() {
-			pvcInformer.Informer().Run(stopCh)
-			wg.Done()
-		}()
-
+		wg.Add(1)
 		// Start PV controller to send volume event information
 		go func() {
-			pController.Run(NumThreads, stopCh)
+			_ = pController.Run(ctx)
 			wg.Done()
 		}()
-
-		wg.Wait()
 	}
 
 	if !*leaderElection {
-		run(context.TODO())
+		// Create a context which can be cancled
+		ctx, cancelFn := context.WithCancel(context.TODO())
+		run(ctx)
+
+		// When process receives shutdown signal trigger run cancel func
+		<-stopCh
+		cancelFn()
 	} else {
 		le := leader.NewLeaderElection(kubeClient, leaderElectionLockName, run)
 		if *leaderElectionNamespace != "" {
 			le.WithNamespace(*leaderElectionNamespace)
 		}
 		if err := le.Run(); err != nil {
-			klog.Fatalf("failed to initialize leader election: %v", err)
+			return errors.Wrapf(err, "failed to initialize leader election")
 		}
 	}
+
+	wg.Wait()
 	return nil
 }
 
@@ -134,16 +130,4 @@ func getClusterConfig(kubeconfig string) (*rest.Config, error) {
 	}
 	klog.V(4).Info("Kubeconfig flag is empty... fetching incluster config")
 	return rest.InClusterConfig()
-}
-
-// getSyncInterval gets the resync interval from environment variable.
-// If missing or zero then default to SharedInformerInterval otherwise
-// return the obtained value
-func getSyncInterval() time.Duration {
-	resyncInterval, err := strconv.Atoi(os.Getenv("RESYNC_INTERVAL"))
-	if err != nil || resyncInterval == 0 {
-		klog.Warningf("Incorrect resync interval %q obtained from env, defaulting to %q seconds", resyncInterval, sharedInformerInterval)
-		return sharedInformerInterval
-	}
-	return time.Duration(resyncInterval) * time.Second
 }

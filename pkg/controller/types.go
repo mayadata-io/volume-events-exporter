@@ -14,19 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package controller
 
-import (
-	"os"
+import "context"
 
-	"github.com/mayadata-io/volume-events-exporter/pkg/cmd"
-	"k8s.io/klog/v2"
-)
-
-func main() {
-	if err := cmd.StartVolumeEventsController(); err != nil {
-		klog.Errorf("Failed to start volume event collector controller:{%s}", err.Error())
-		os.Exit(1)
-	}
-	os.Exit(0)
+// Controller defines interface to execute controller
+type Controller interface {
+	// Run method to run controller
+	Run(ctx context.Context) error
 }

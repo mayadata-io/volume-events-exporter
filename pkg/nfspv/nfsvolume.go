@@ -36,6 +36,10 @@ const (
 	OpenEBSNFSLabelKey = "nfs.openebs.io/volume"
 )
 
+var (
+	supportedDataTypes = []collectorinterface.DataType{collectorinterface.JSONDataType}
+)
+
 // nfsVolume will implement necessary methods
 // required to satisfy collector interface
 type nfsVolume struct {
@@ -47,6 +51,9 @@ type nfsVolume struct {
 	pvObj              *corev1.PersistentVolume
 	nfsServerNamespace string
 	annotationPrefix   string
+	// dataType represents the type of the data that server
+	// can understand. As of now JSON is supported
+	dataType collectorinterface.DataType
 }
 
 func NewNFSVolume(
@@ -54,7 +61,8 @@ func NewNFSVolume(
 	pvcLister corev1listers.PersistentVolumeClaimLister,
 	pvLister corev1listers.PersistentVolumeLister,
 	pvObj *corev1.PersistentVolume,
-	nfsServerNamespace string) collectorinterface.VolumeEventCollector {
+	nfsServerNamespace string,
+	dataType collectorinterface.DataType) collectorinterface.VolumeEventCollector {
 	return &nfsVolume{
 		clientset:          clientset,
 		pvcLister:          pvcLister,
@@ -62,14 +70,27 @@ func NewNFSVolume(
 		pvObj:              pvObj,
 		nfsServerNamespace: nfsServerNamespace,
 		annotationPrefix:   "nfs.",
+		dataType:           dataType,
 	}
 }
 
-func (n *nfsVolume) CollectCreateEventData() (string, error) {
+// CollectCreateEvents returns the serialized data(JSON/YAML) with
+// volume creation timestamps. Serialized data must understood by
+// server.
+// NOTE: There can be a case where exporter is unable to send events
+//		 to server mean time if user deletes volume then resources
+//		 will have deletion timestamp. To avoid sending deletion
+//		 timestamp for create event we are mutating deletion timestamp
+//		 fields with nil value.
+func (n *nfsVolume) CollectCreateEvents() (string, error) {
 
 	volumeData, err := n.getVolumeData()
 	if err != nil {
 		return "", err
+	}
+
+	if !n.isSupportedDataType() {
+		return "", errors.Errorf("data type %q is not supported. Supported types %v", n.dataType, supportedDataTypes)
 	}
 
 	if volumeData.NFSPVC != nil {
@@ -91,15 +112,18 @@ func (n *nfsVolume) CollectCreateEventData() (string, error) {
 	}
 	rawData, err := json.Marshal(createData)
 	if err != nil {
-		return "", errors.Wrapf(err, "failed to marshal create volume data")
+		return "", errors.Wrapf(err, "failed to marshal create volume events")
 	}
 	return string(rawData), nil
 }
 
-func (n *nfsVolume) CollectDeleteEventData() (string, error) {
+func (n *nfsVolume) CollectDeleteEvents() (string, error) {
 	// TODO: Is below check required?
 	if n.pvObj.DeletionTimestamp == nil {
 		return "", errors.Errorf("volume is not yet marked for deletion")
+	}
+	if !n.isSupportedDataType() {
+		return "", errors.Errorf("data type %q is not supported. Supported types %v", n.dataType, supportedDataTypes)
 	}
 
 	volumeData, err := n.getVolumeData()
@@ -112,7 +136,7 @@ func (n *nfsVolume) CollectDeleteEventData() (string, error) {
 	}
 	rawData, err := json.Marshal(createData)
 	if err != nil {
-		return "", errors.Wrapf(err, "failed to marshal create volume data")
+		return "", errors.Wrapf(err, "failed to marshal delete volume events")
 	}
 	return string(rawData), nil
 }
@@ -121,8 +145,8 @@ func (n *nfsVolume) AnnotateCreateEvent(pvObj *corev1.PersistentVolume) (*corev1
 	if pvObj.Annotations == nil {
 		pvObj.Annotations = make(map[string]string)
 	}
-	annoKey := n.annotationPrefix + collectorinterface.OpenebsCreateAnnotationSuffix
-	pvObj.Annotations[annoKey] = collectorinterface.OpenebsSentAnnotationValue
+	annoKey := n.annotationPrefix + collectorinterface.VolumeCreateEventAnnotation
+	pvObj.Annotations[annoKey] = collectorinterface.OpenebsEventSentAnnotationValue
 	return n.clientset.CoreV1().PersistentVolumes().Update(context.TODO(), pvObj, metav1.UpdateOptions{})
 }
 
@@ -131,8 +155,8 @@ func (n *nfsVolume) AnnotateDeleteEvent(pvObj *corev1.PersistentVolume) (*corev1
 	if pvCopy.Annotations == nil {
 		pvCopy.Annotations = make(map[string]string)
 	}
-	annoKey := n.annotationPrefix + collectorinterface.OpenebsDeleteAnnotationSuffix
-	pvCopy.Annotations[annoKey] = collectorinterface.OpenebsSentAnnotationValue
+	annoKey := n.annotationPrefix + collectorinterface.VolumeDeleteEventAnnotation
+	pvCopy.Annotations[annoKey] = collectorinterface.OpenebsEventSentAnnotationValue
 
 	patchBytes, _, err := getPatchData(pvObj, pvCopy)
 	if err != nil {
@@ -149,8 +173,12 @@ func (n *nfsVolume) AnnotateDeleteEvent(pvObj *corev1.PersistentVolume) (*corev1
 	return newPVObj, nil
 }
 
+func (n *nfsVolume) GetDataType() collectorinterface.DataType {
+	return n.dataType
+}
+
 func (n *nfsVolume) RemoveEventFinalizer() error {
-	openebsEventFinalizer := n.annotationPrefix + collectorinterface.OpenebsEventFinalizerSuffix
+	openebsEventFinalizer := n.annotationPrefix + collectorinterface.VolumeEventsFinalizer
 
 	backendPVC, err := n.getPVCCopy(n.nfsServerNamespace, "nfs-"+n.pvObj.Name)
 	if err != nil && !k8serrors.IsNotFound(err) {
@@ -283,6 +311,15 @@ func (n *nfsVolume) getPVCCopy(namespace, name string) (*corev1.PersistentVolume
 	// Since we are fetching from cahce it is required
 	// to make deepcopy so that callers can mutuate object
 	return pvcObj.DeepCopy(), nil
+}
+
+func (n *nfsVolume) isSupportedDataType() bool {
+	switch n.dataType {
+	case collectorinterface.JSONDataType:
+		return true
+	default:
+		return false
+	}
 }
 
 func getPatchData(oldObj, newObj interface{}) ([]byte, []byte, error) {

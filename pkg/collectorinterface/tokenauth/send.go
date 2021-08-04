@@ -29,8 +29,7 @@ import (
 
 const (
 	// postMethod is used to send http POST request
-	postMethod   = "POST"
-	okStatusCode = 200
+	postMethod = "POST"
 )
 
 type TokenClient struct {
@@ -40,9 +39,6 @@ type TokenClient struct {
 	// serverAuthToken holds the token of the server
 	serverAuthToken string
 
-	// dataType represents the type of the data that server
-	// can understand. Defaults to JSON
-	dataType collectorinterface.DataType
 	// Client to interact with server
 	client *http.Client
 	// VolumeCollector implements methods required for event collector
@@ -53,7 +49,6 @@ func NewTokenClient(collectorInterface collectorinterface.VolumeEventCollector) 
 	return &TokenClient{
 		serverURL:            env.GetCallBackServerURL(),
 		serverAuthToken:      env.GetCallBackServerAuthToken(),
-		dataType:             collectorinterface.JSONDataType,
 		client:               &http.Client{},
 		VolumeEventCollector: collectorInterface,
 	}
@@ -63,7 +58,8 @@ func (d *TokenClient) Send(data string) error {
 	var payload []byte
 	var contentType string
 
-	switch d.dataType {
+	dataType := d.GetDataType()
+	switch dataType {
 	case collectorinterface.JSONDataType:
 		payload = []byte(data)
 		contentType = "application/json"
@@ -72,7 +68,7 @@ func (d *TokenClient) Send(data string) error {
 		payload = []byte(data)
 		contentType = "text/yaml"
 	default:
-		return errors.Errorf("unsupported data type %s", d.dataType)
+		return errors.Errorf("unsupported data type %s", dataType)
 	}
 
 	req, err := http.NewRequest(postMethod, d.serverURL, bytes.NewBuffer(payload))
@@ -86,7 +82,7 @@ func (d *TokenClient) Send(data string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != okStatusCode {
+	if resp.StatusCode != http.StatusOK {
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			klog.Errorf("failed to decode body error: %v", err)

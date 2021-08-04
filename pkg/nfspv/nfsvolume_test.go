@@ -102,13 +102,14 @@ func (f *fixture) preCreateResources(
 	return nil
 }
 
-func TestCollectCreateEventData(t *testing.T) {
+func TestCollectCreateEvents(t *testing.T) {
 	f := newFixture()
 	tests := map[string]struct {
 		nfsPVC        *corev1.PersistentVolumeClaim
 		nfsPV         *corev1.PersistentVolume
 		backendPVC    *corev1.PersistentVolumeClaim
 		backendPV     *corev1.PersistentVolume
+		dataType      collectorinterface.DataType
 		isErrExpected bool
 	}{
 		"when all nfs volume resources exist in the system": {
@@ -161,6 +162,7 @@ func TestCollectCreateEventData(t *testing.T) {
 					},
 				},
 			},
+			dataType: collectorinterface.JSONDataType,
 		},
 		"when nfs pvc doesn't exist": {
 			nfsPV: &corev1.PersistentVolume{
@@ -204,6 +206,7 @@ func TestCollectCreateEventData(t *testing.T) {
 					},
 				},
 			},
+			dataType: collectorinterface.JSONDataType,
 		},
 		"when backend PV doesn't exist": {
 			nfsPV: &corev1.PersistentVolume{
@@ -241,6 +244,7 @@ func TestCollectCreateEventData(t *testing.T) {
 				},
 			},
 			isErrExpected: true,
+			dataType:      collectorinterface.JSONDataType,
 		},
 	}
 	for name, test := range tests {
@@ -258,8 +262,9 @@ func TestCollectCreateEventData(t *testing.T) {
 				pvObj:              test.nfsPV,
 				nfsServerNamespace: "openebs",
 				annotationPrefix:   "nfs.",
+				dataType:           test.dataType,
 			}
-			str, err := nfsVolume.CollectCreateEventData()
+			str, err := nfsVolume.CollectCreateEvents()
 			if test.isErrExpected && err == nil {
 				t.Fatalf("%q test failed expected error to occur but got nil", name)
 			}
@@ -290,13 +295,14 @@ func TestCollectCreateEventData(t *testing.T) {
 	}
 }
 
-func TestCollectDeleteEventData(t *testing.T) {
+func TestCollectDeleteEvents(t *testing.T) {
 	f := newFixture()
 	tests := map[string]struct {
 		nfsPVC        *corev1.PersistentVolumeClaim
 		nfsPV         *corev1.PersistentVolume
 		backendPVC    *corev1.PersistentVolumeClaim
 		backendPV     *corev1.PersistentVolume
+		dataType      collectorinterface.DataType
 		isErrExpected bool
 	}{
 		"when all nfs volume resources exist in the system with deletion timestamp": {
@@ -352,6 +358,7 @@ func TestCollectDeleteEventData(t *testing.T) {
 					},
 				},
 			},
+			dataType: collectorinterface.JSONDataType,
 		},
 		"when nfs pvc doesn't exist in cluster": {
 			nfsPV: &corev1.PersistentVolume{
@@ -395,6 +402,7 @@ func TestCollectDeleteEventData(t *testing.T) {
 					},
 				},
 			},
+			dataType: collectorinterface.JSONDataType,
 		},
 		"when backend PV doesn't exist": {
 			nfsPV: &corev1.PersistentVolume{
@@ -432,6 +440,7 @@ func TestCollectDeleteEventData(t *testing.T) {
 				},
 			},
 			isErrExpected: true,
+			dataType:      collectorinterface.JSONDataType,
 		},
 		"when nfs pv is not marked for deletion": {
 			nfsPV: &corev1.PersistentVolume{
@@ -474,6 +483,60 @@ func TestCollectDeleteEventData(t *testing.T) {
 				},
 			},
 			isErrExpected: true,
+			dataType:      collectorinterface.JSONDataType,
+		},
+		"when all nfs volume resources exist in the system but datatype is not supported": {
+			nfsPVC: &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "pvc5",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.Now(),
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					VolumeName: "pv5",
+				},
+			},
+			nfsPV: &corev1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "pv5",
+					CreationTimestamp: metav1.Now(),
+					Finalizers: []string{
+						"kubernetes.io/pv-protection",
+						"nfs.events.openebs.io/finalizer",
+					},
+				},
+				Spec: corev1.PersistentVolumeSpec{
+					ClaimRef: &corev1.ObjectReference{
+						Name:      "pvc5",
+						Namespace: "ns1",
+					},
+				},
+			},
+			backendPVC: &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "nfs-pv5",
+					Namespace:         "openebs",
+					CreationTimestamp: metav1.Now(),
+					Finalizers: []string{
+						"nfs.events.openebs.io/finalizer",
+					},
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					VolumeName: "backend-pv5",
+				},
+			},
+			backendPV: &corev1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "backend-pv5",
+					CreationTimestamp: metav1.Now(),
+					Finalizers: []string{
+						"kubernetes.io/pv-protection",
+						"nfs.events.openebs.io/finalizer",
+					},
+				},
+			},
+			dataType:      collectorinterface.YAMLDataType,
+			isErrExpected: true,
 		},
 	}
 	for name, test := range tests {
@@ -491,8 +554,9 @@ func TestCollectDeleteEventData(t *testing.T) {
 				pvObj:              test.nfsPV,
 				nfsServerNamespace: "openebs",
 				annotationPrefix:   "nfs.",
+				dataType:           test.dataType,
 			}
-			str, err := nfsVolume.CollectDeleteEventData()
+			str, err := nfsVolume.CollectDeleteEvents()
 			if test.isErrExpected && err == nil {
 				t.Fatalf("%q test failed expected error to occur but got nil", name)
 			}
@@ -613,7 +677,7 @@ func TestAnnotateCreateEvent(t *testing.T) {
 				if test.nfsPV.Annotations == nil {
 					test.nfsPV.Annotations = map[string]string{}
 				}
-				test.nfsPV.Annotations[nfsVolume.annotationPrefix+collectorinterface.OpenebsCreateAnnotationSuffix] = collectorinterface.OpenebsSentAnnotationValue
+				test.nfsPV.Annotations[nfsVolume.annotationPrefix+collectorinterface.VolumeCreateEventAnnotation] = collectorinterface.OpenebsEventSentAnnotationValue
 				if !reflect.DeepEqual(test.nfsPV, updatedPV) {
 					t.Fatalf("%q test failed expected no diff but got \n%s", name, cmp.Diff(test.nfsPV, updatedPV))
 				}
@@ -712,7 +776,7 @@ func TestAnnotateDeleteEvent(t *testing.T) {
 					test.nfsPV.Annotations = map[string]string{}
 				}
 				updatedPV.CreationTimestamp = test.nfsPV.CreationTimestamp
-				test.nfsPV.Annotations[nfsVolume.annotationPrefix+collectorinterface.OpenebsDeleteAnnotationSuffix] = collectorinterface.OpenebsSentAnnotationValue
+				test.nfsPV.Annotations[nfsVolume.annotationPrefix+collectorinterface.VolumeDeleteEventAnnotation] = collectorinterface.OpenebsEventSentAnnotationValue
 				if !reflect.DeepEqual(test.nfsPV, updatedPV) {
 					t.Fatalf("%q test failed expected no diff but got \n%s", name, cmp.Diff(test.nfsPV, updatedPV))
 				}
@@ -973,7 +1037,7 @@ func RemoveEventFinalizer(t *testing.T) {
 				t.Fatalf("%q test failed expected error not to occur but got %v", name, err)
 			}
 			if !test.isErrExpected {
-				eventFinalizer := nfsVolume.annotationPrefix + collectorinterface.OpenebsEventFinalizerSuffix
+				eventFinalizer := nfsVolume.annotationPrefix + collectorinterface.VolumeEventsFinalizer
 				// Event Finalizer shouldn't exist after removal
 				if test.nfsPV != nil {
 					pv, err := f.clientset.CoreV1().PersistentVolumes().Get(context.TODO(), test.nfsPV.Name, metav1.GetOptions{})

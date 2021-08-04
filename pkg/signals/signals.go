@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 var shutdownSignals = []os.Signal{os.Interrupt, syscall.SIGTERM}
@@ -34,7 +35,8 @@ func SetupSignalHandler() (stopCh <-chan struct{}) {
 	go func() {
 		<-c
 		close(stop)
-		<-c
+		// Wait for 2 seoncds for go routines to return
+		time.Sleep(2 * time.Second)
 		os.Exit(1) // second signal. Exit directly.
 	}()
 

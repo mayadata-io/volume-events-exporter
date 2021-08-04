@@ -20,13 +20,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-type DataType string
-
-const (
-	JSONDataType DataType = "JSON"
-	YAMLDataType DataType = "YAML"
-)
-
 type EventsSender interface {
 	// Send will push given event information to configured server
 	// NOTE: Send should convert data into required format before sending
@@ -36,14 +29,16 @@ type EventsSender interface {
 }
 
 type VolumeEventCollector interface {
-	// CollectCreateEventData should return data required for create event
-	CollectCreateEventData() (string, error)
-	// CollectDeleteEventData should return data required for delete event
-	CollectDeleteEventData() (string, error)
+	// CollectCreateEvents should return data required for volume create event
+	CollectCreateEvents() (string, error)
+	// CollectDeleteEvents should return data required for volume delete event
+	CollectDeleteEvents() (string, error)
 	// RemoveEventFinalizer should remove the finalizer on all dependent resources
 	RemoveEventFinalizer() error
 	// AnnotateCreateEvent will set create event annotation on PersistentVolume object
 	AnnotateCreateEvent(pvObj *corev1.PersistentVolume) (*corev1.PersistentVolume, error)
 	// AnnotateDeleteEvent will set delete event annotation on PersistentVolume object
 	AnnotateDeleteEvent(pvObj *corev1.PersistentVolume) (*corev1.PersistentVolume, error)
+	// GetDataType returns the type of serialized data
+	GetDataType() DataType
 }

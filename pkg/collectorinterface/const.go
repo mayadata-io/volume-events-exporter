@@ -17,8 +17,15 @@ limitations under the License.
 package collectorinterface
 
 const (
-	OpenebsCreateAnnotationSuffix = "event.openebs.io/volume-create"
-	OpenebsDeleteAnnotationSuffix = "event.openebs.io/volume-delete"
-	OpenebsSentAnnotationValue    = "sent"
-	OpenebsEventFinalizerSuffix   = "events.openebs.io/finalizer"
+	VolumeCreateEventAnnotation     = "event.openebs.io/volume-create"
+	VolumeDeleteEventAnnotation     = "event.openebs.io/volume-delete"
+	OpenebsEventSentAnnotationValue = "sent"
+	VolumeEventsFinalizer           = "events.openebs.io/finalizer"
+)
+
+type DataType string
+
+const (
+	JSONDataType DataType = "JSON"
+	YAMLDataType DataType = "YAML"
 )

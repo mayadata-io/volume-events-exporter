@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pvcontroller
+package controller
 
 import (
 	"testing"
@@ -24,10 +24,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestCanSkipEventCollection(t *testing.T) {
+func TestShouldSendEvent(t *testing.T) {
 	tests := map[string]struct {
-		pvObj             *corev1.PersistentVolume
-		expectedSkipEvent bool
+		pvObj                   *corev1.PersistentVolume
+		expectedShouldSendEvent bool
 	}{
 		"When volume doesn't required to send event information": {
 			pvObj: &corev1.PersistentVolume{
@@ -39,9 +39,9 @@ func TestCanSkipEventCollection(t *testing.T) {
 					CreationTimestamp: metav1.Now(),
 				},
 			},
-			expectedSkipEvent: true,
+			expectedShouldSendEvent: false,
 		},
-		"When volume send event information": {
+		"When volume requires to send event information": {
 			pvObj: &corev1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv-2",
@@ -52,75 +52,76 @@ func TestCanSkipEventCollection(t *testing.T) {
 					CreationTimestamp: metav1.Now(),
 				},
 			},
-			expectedSkipEvent: false,
+			expectedShouldSendEvent: true,
 		},
 		"When create event already sent and not yet eligible to send delete event": {
 			pvObj: &corev1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv-3",
 					Annotations: map[string]string{
-						"pv.kubernetes.io/provisioned-by":     "openebs.io/nfsrwx",
-						"events.openebs.io/required":          "true",
-						"nfs.events.openebs.io/volume-create": "sent",
+						"pv.kubernetes.io/provisioned-by":    "openebs.io/nfsrwx",
+						"events.openebs.io/required":         "true",
+						"nfs.event.openebs.io/volume-create": "sent",
 					},
 					CreationTimestamp: metav1.Now(),
 				},
 			},
-			expectedSkipEvent: false,
+			expectedShouldSendEvent: false,
 		},
 		"When create information is required to send": {
 			pvObj: &corev1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv-4",
 					Annotations: map[string]string{
-						"pv.kubernetes.io/provisioned-by":     "openebs.io/nfsrwx",
-						"events.openebs.io/required":          "true",
-						"nfs.events.openebs.io/volume-create": "pending",
+						"pv.kubernetes.io/provisioned-by":    "openebs.io/nfsrwx",
+						"events.openebs.io/required":         "true",
+						"nfs.event.openebs.io/volume-create": "pending",
 					},
 					CreationTimestamp: metav1.Now(),
 				},
 			},
-			expectedSkipEvent: false,
+			expectedShouldSendEvent: true,
 		},
 		"When create event already sent and volume is eligible for sending delete event": {
 			pvObj: &corev1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv-5",
 					Annotations: map[string]string{
-						"pv.kubernetes.io/provisioned-by":     "openebs.io/nfsrwx",
-						"events.openebs.io/required":          "true",
-						"nfs.events.openebs.io/volume-create": "sent",
+						"pv.kubernetes.io/provisioned-by":    "openebs.io/nfsrwx",
+						"events.openebs.io/required":         "true",
+						"nfs.event.openebs.io/volume-create": "sent",
 					},
 					CreationTimestamp: metav1.Now(),
 					DeletionTimestamp: func() *metav1.Time { t := metav1.Now(); return &t }(),
 				},
 			},
-			expectedSkipEvent: false,
+			expectedShouldSendEvent: true,
 		},
 		"When create and delete event both are sent": {
 			pvObj: &corev1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv-5",
 					Annotations: map[string]string{
-						"pv.kubernetes.io/provisioned-by":     "openebs.io/nfsrwx",
-						"events.openebs.io/required":          "true",
-						"nfs.events.openebs.io/volume-create": "sent",
-						"nfs.events.openebs.io/volume-delete": "sent",
+						"pv.kubernetes.io/provisioned-by":    "openebs.io/nfsrwx",
+						"events.openebs.io/required":         "true",
+						"nfs.event.openebs.io/volume-create": "sent",
+						"nfs.event.openebs.io/volume-delete": "sent",
 					},
 					CreationTimestamp: metav1.Now(),
 					DeletionTimestamp: func() *metav1.Time { t := metav1.Now(); return &t }(),
 				},
 			},
-			expectedSkipEvent: false,
+			// Finalizer removal needs to be done
+			expectedShouldSendEvent: true,
 		},
 	}
 	for name, test := range tests {
 		name := name
 		test := test
 		t.Run(name, func(t *testing.T) {
-			gotOutput := canSkipEventCollection(test.pvObj)
-			if gotOutput != test.expectedSkipEvent {
-				t.Errorf("%q test failed expected %t but got %t", name, test.expectedSkipEvent, gotOutput)
+			gotOutput := shouldSendEvent(test.pvObj)
+			if gotOutput != test.expectedShouldSendEvent {
+				t.Errorf("%q test failed expected %t but got %t", name, test.expectedShouldSendEvent, gotOutput)
 			}
 		})
 	}
@@ -263,7 +264,7 @@ func TestIsDeleteVolumeEventSent(t *testing.T) {
 func TestGetEventSender(t *testing.T) {
 	tests := map[string]struct {
 		pvObj         *corev1.PersistentVolume
-		controller    *PVMetricsController
+		controller    *PVEventController
 		isErrExpected bool
 	}{
 		"When nfspv requesting for sending volume information": {
@@ -283,7 +284,7 @@ func TestGetEventSender(t *testing.T) {
 					CreationTimestamp: metav1.Now(),
 				},
 			},
-			controller:    &PVMetricsController{},
+			controller:    &PVEventController{},
 			isErrExpected: false,
 		},
 		"When nfspv exist reconciles after removing finalizer": {
@@ -296,11 +297,14 @@ func TestGetEventSender(t *testing.T) {
 					Finalizers: []string{
 						"custom.io/volume-protection",
 					},
+					Labels: map[string]string{
+						nfspv.OpenEBSNFSLabelKey: "true",
+					},
 					CreationTimestamp: metav1.Now(),
 					DeletionTimestamp: func() *metav1.Time { t := metav1.Now(); return &t }(),
 				},
 			},
-			controller:    &PVMetricsController{},
+			controller:    &PVEventController{},
 			isErrExpected: false,
 		},
 		"When nfspv has already sent information but finalizer exist": {
@@ -322,7 +326,7 @@ func TestGetEventSender(t *testing.T) {
 					DeletionTimestamp: func() *metav1.Time { t := metav1.Now(); return &t }(),
 				},
 			},
-			controller:    &PVMetricsController{},
+			controller:    &PVEventController{},
 			isErrExpected: false,
 		},
 		"When localpv is requesting for event information": {
@@ -344,7 +348,7 @@ func TestGetEventSender(t *testing.T) {
 					DeletionTimestamp: func() *metav1.Time { t := metav1.Now(); return &t }(),
 				},
 			},
-			controller:    &PVMetricsController{},
+			controller:    &PVEventController{},
 			isErrExpected: true,
 		},
 	}

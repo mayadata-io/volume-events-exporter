@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pvcontroller
+package controller
 
 import (
 	"context"
@@ -34,45 +34,47 @@ import (
 )
 
 const (
-	eventRequiredAnnotationKey   = "events.openebs.io/required"
+	annotationProcessEventKey    = "events.openebs.io/required"
 	eventRequiredAnnotationValue = "true"
 )
 
-// syncToSendVolumeEvents reconciles PersistentVolume and will
+// processVolumeEvents reconciles PersistentVolume and will
 // send volume information to configured callback URL if it is required
 // send (or) volume event information is not yet sent
-func (pController *PVMetricsController) syncToSendVolumeEvents(key string) error {
+func (pController *PVEventController) processVolumeEvents(key string) (bool, error) {
 	klog.V(4).Infof("Started syncing PV: %s to send send metrics information", key)
 
-	// Convert the name string into a distinct namespace and name
+	// Convert the key string into a distinct namespace and name
 	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		runtime.HandleError(fmt.Errorf("invalid resource key: %s", key))
-		return nil
+		return false, nil
 	}
 
 	// Get PV resource with above name
-	pvObj, err := pController.KubeClientset.CoreV1().PersistentVolumes().Get(context.TODO(), name, metav1.GetOptions{})
+	pvObj, err := pController.kubeClientset.CoreV1().PersistentVolumes().Get(context.TODO(), name, metav1.GetOptions{})
 	if k8serror.IsNotFound(err) {
 		runtime.HandleError(fmt.Errorf("PV %q has been deleted", key))
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	// Deep-copy otherwise we are mutating cache store
-	err = pController.sync(pvObj.DeepCopy())
+	err = pController.sync(pvObj)
 	// TODO: If events needs to be generated undo the comments
 	// if err != nil {
 	// 	pController.Recorder.Event(pvObj, corev1.EventTypeWarning, "EventInformation", err.Error())
 	// }
-	return err
+
+	// Something went wrong let's retry after sometime
+	return true, err
 }
 
-func (pController *PVMetricsController) sync(pvObj *corev1.PersistentVolume) error {
+func (pController *PVEventController) sync(pvObj *corev1.PersistentVolume) error {
 	klog.V(4).Infof("Reconciling PV %s to send volume events", pvObj.Name)
-	if canSkipEventCollection(pvObj) {
+	if !shouldSendEvent(pvObj) {
+		// If it is not required to send event
 		return nil
 	}
 
@@ -85,10 +87,31 @@ func (pController *PVMetricsController) sync(pvObj *corev1.PersistentVolume) err
 		return nil
 	}
 
+	// Send create event information
+	err = pController.sendCreateEvent(eventSender, pvObj)
+	if err != nil {
+		return err
+	}
+
+	// Send delete event information
+	err = pController.sendDeleteEvent(eventSender, pvObj)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// sendCreateEvent will push create volume event to configured server
+// NOTE: If event is already sent then sendCreateEvent will return nil
+func (pController *PVEventController) sendCreateEvent(
+	eventSender collectorinterface.EventsSender,
+	pvObj *corev1.PersistentVolume) error {
+
 	// Send create information
 	if !isCreateVolumeEventSent(pvObj) {
 		// Get create event related data
-		data, err := eventSender.CollectCreateEventData()
+		data, err := eventSender.CollectCreateEvents()
 		if err != nil {
 			return errors.Wrapf(err, "failed to get create event data of volume %s", pvObj.Name)
 		}
@@ -105,12 +128,18 @@ func (pController *PVMetricsController) sync(pvObj *corev1.PersistentVolume) err
 		}
 		klog.Infof("Successfully sent create volume %s event to server", pvObj.Name)
 	}
+	return nil
+}
 
-	// Send delete information
+// sendDeleteEvent will push delete volume events to configured server
+// NOTE: If event is already sent then sendDeleteEvent will return nil
+func (pController *PVEventController) sendDeleteEvent(
+	eventSender collectorinterface.EventsSender,
+	pvObj *corev1.PersistentVolume) error {
 	if pvObj.DeletionTimestamp != nil {
 		if !isDeleteVolumeEventSent(pvObj) {
 			// Get delete event related data
-			data, err := eventSender.CollectDeleteEventData()
+			data, err := eventSender.CollectDeleteEvents()
 			if err != nil {
 				return errors.Wrapf(err, "failed to get delete event data of volume %s", pvObj.Name)
 			}
@@ -127,7 +156,8 @@ func (pController *PVMetricsController) sync(pvObj *corev1.PersistentVolume) err
 			}
 			klog.Infof("Successfully sent delete volume %s event to server", pvObj.Name)
 		}
-		err = eventSender.RemoveEventFinalizer()
+
+		err := eventSender.RemoveEventFinalizer()
 		if err != nil {
 			return errors.Wrapf(err, "failed to remove finalizers on volume %s", pvObj.Name)
 		}
@@ -135,49 +165,43 @@ func (pController *PVMetricsController) sync(pvObj *corev1.PersistentVolume) err
 	return nil
 }
 
-func (pController *PVMetricsController) getEventSender(pvObj *corev1.PersistentVolume) (collectorinterface.EventsSender, error) {
-	var eventFinalizer string
-	for _, finalizer := range pvObj.Finalizers {
-		if strings.HasSuffix(finalizer, collectorinterface.OpenebsEventFinalizerSuffix) {
-			eventFinalizer = finalizer
-			break
-		}
-	}
-	if eventFinalizer == "" {
-		klog.Warningf("unable to find volume %s type from finalizers %v", pvObj.Name, pvObj.Finalizers)
-		return nil, nil
-	}
-
+func (pController *PVEventController) getEventSender(pvObj *corev1.PersistentVolume) (collectorinterface.EventsSender, error) {
+	// Add more types based on underlying volume type
 	if value, ok := pvObj.Labels[nfspv.OpenEBSNFSLabelKey]; ok && value == "true" {
 		return tokenauth.NewTokenClient(
 			nfspv.NewNFSVolume(
-				pController.KubeClientset,
-				pController.PVCLister,
-				pController.PVLister,
+				pController.kubeClientset,
+				pController.pvcLister,
+				pController.pvLister,
 				pvObj,
-				pController.NFSServerNamespace)), nil
+				pController.nfsServerNamespace,
+				collectorinterface.JSONDataType)), nil
 	}
-	eventSenderType := eventFinalizer[:len(eventFinalizer)-len(collectorinterface.OpenebsEventFinalizerSuffix)]
-	return nil, errors.Errorf("event sender is not available for volume type %s", eventSenderType)
+	return nil, errors.Errorf("event sender is not available for volume %s", pvObj.Name)
 }
 
-// canSkipEventCollection will return true based on following conditions:
-// 1. Retrun true if volume doesn't require event to be exported(based on annotation "events.openebs.io/required": "true")
-// 2. Retrun true if deletion timestamp is not set and create event already sent
+// shouldSendEvent will return true based on following conditions:
+// 1. Retrun true if volume requires event to be exported(based on annotation "events.openebs.io/required": "true")
+// 2. Retrun true if deletion timestamp is set and create event is not yet send
 // 3. else return false
-func canSkipEventCollection(pvObj *corev1.PersistentVolume) bool {
-	if value, isExist := pvObj.Annotations[eventRequiredAnnotationKey]; !isExist || value != eventRequiredAnnotationValue {
+func shouldSendEvent(pvObj *corev1.PersistentVolume) bool {
+	if value, isExist := pvObj.Annotations[annotationProcessEventKey]; !isExist || value != eventRequiredAnnotationValue {
+		return false
+	}
+
+	// If create volume events is not yet send then return true
+	if !isCreateVolumeEventSent(pvObj) {
 		return true
 	}
-	return pvObj.DeletionTimestamp == nil && isCreateVolumeEventSent(pvObj)
+	return pvObj.DeletionTimestamp != nil
 }
 
 // isCreateVolumeEventSent will return true if volume has
 // suffix(event.openebs.io/volume-create) in annotations and value is sent
 func isCreateVolumeEventSent(pvObj *corev1.PersistentVolume) bool {
 	for key, value := range pvObj.Annotations {
-		if strings.HasSuffix(key, collectorinterface.OpenebsCreateAnnotationSuffix) {
-			return value == collectorinterface.OpenebsSentAnnotationValue
+		if strings.HasSuffix(key, collectorinterface.VolumeCreateEventAnnotation) {
+			return value == collectorinterface.OpenebsEventSentAnnotationValue
 		}
 	}
 	return false
@@ -187,8 +211,8 @@ func isCreateVolumeEventSent(pvObj *corev1.PersistentVolume) bool {
 // suffix(event.openebs.io/volume-delete) in annotations and value is sent
 func isDeleteVolumeEventSent(pvObj *corev1.PersistentVolume) bool {
 	for key, value := range pvObj.Annotations {
-		if strings.HasSuffix(key, collectorinterface.OpenebsDeleteAnnotationSuffix) {
-			return value == collectorinterface.OpenebsSentAnnotationValue
+		if strings.HasSuffix(key, collectorinterface.VolumeDeleteEventAnnotation) {
+			return value == collectorinterface.OpenebsEventSentAnnotationValue
 		}
 	}
 	return false

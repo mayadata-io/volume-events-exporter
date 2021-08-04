@@ -167,7 +167,7 @@ func (pController *PVEventController) sendDeleteEvent(
 
 func (pController *PVEventController) getEventSender(pvObj *corev1.PersistentVolume) (collectorinterface.EventsSender, error) {
 	// Add more types based on underlying volume type
-	if value, ok := pvObj.Labels[nfspv.OpenEBSNFSLabelKey]; ok && value == "true" {
+	if value, ok := pvObj.Labels[nfspv.OpenEBSCASLabelKey]; ok && value == nfspv.OpenEBSNFSCASLabelValue {
 		return tokenauth.NewTokenClient(
 			nfspv.NewNFSVolume(
 				pController.kubeClientset,

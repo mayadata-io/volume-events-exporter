@@ -102,7 +102,7 @@ if [ $GOOS = "windows" ]; then
     output_name+='.exe'
 fi
 
-env GOOS=$GOOS GOARCH=$GOARCH go build ${BUILD_TAG} -o $output_name ./cmd/${CTLNAME}
+env GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=0 go build ${BUILD_TAG} -o $output_name ./cmd/${CTLNAME}
 
 echo ""
 

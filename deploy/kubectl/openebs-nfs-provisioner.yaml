@@ -41,6 +41,9 @@ rules:
 - apiGroups: ["apiextensions.k8s.io"]
   resources: ["customresourcedefinitions"]
   verbs: [ "get", "list", "create", "update", "delete", "patch"]
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["*"]
 - apiGroups: ["openebs.io"]
   resources: [ "*"]
   verbs: ["*"]
@@ -160,6 +163,8 @@ spec:
       - name: volume-events-collector
         imagePullPolicy: IfNotPresent
         image: mayadataio/volume-events-exporter:ci
+        args:
+          - "--leader-election=false"
         env:
         # OPENEBS_IO_NFS_SERVER_NS defines the namespace for nfs-server deployment
         #- name: OPENEBS_IO_NFS_SERVER_NS
@@ -167,10 +172,10 @@ spec:
         #  CALLBACK_URL defines the server address to POST volume event information.
         #  Must be a valid address
         #- name: CALLBACK_URL
-        #  value: "http://173.168.0.5:9000/event-server"
+        #  value: "http://173.168.20.5:9000/event-server"
         #  CALLBACK_TOKEN defines the authentication token required to interact with server.
         #- name: CALLBACK_TOKEN
-        #  value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+        #  value: "eyJhbGciOiJIUzI1NiIsI"
         #  RESYNC_INTERVAL defines how frequently controller has to look for volumes defaults
         #  to 30 seconds. If activity of provisioning & de-provisioning is less then set it
         #  to some higher value

@@ -23,7 +23,7 @@ RUN apk add --no-cache \
     procps \
     ca-certificates
 
-COPY volume-events-exporter /
+COPY volume-events-exporter /usr/local/bin/volume-events-exporter
 
 ARG ARCH
 ARG DBUILD_DATE
@@ -36,4 +36,4 @@ LABEL org.label-schema.build-date=$DBUILD_DATE
 LABEL org.label-schema.vcs-url=$DBUILD_REPO_URL
 LABEL org.label-schema.url=$DBUILD_SITE_URL
 
-CMD ["/volume-events-exporter"]
+ENTRYPOINT ["/usr/local/bin/volume-events-exporter"]

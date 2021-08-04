@@ -33,7 +33,8 @@ import (
 )
 
 const (
-	OpenEBSNFSLabelKey = "nfs.openebs.io/volume"
+	OpenEBSCASLabelKey      = "openebs.io/cas-type"
+	OpenEBSNFSCASLabelValue = "nfs-kernel"
 )
 
 var (

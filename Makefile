@@ -139,21 +139,17 @@ volume-events-exporter-image: volume-events-exporter-bin
 	@cd buildscripts/volume-events-exporter && docker build -t ${VOLUME_EVENTS_EXPORTER_IMAGE_TAG} ${DBUILD_ARGS} . --no-cache
 	@rm buildscripts/volume-events-exporter/${VOLUME_EVENTS_EXPORTER}
 
-# Bootstrap downloads tools required
-# during build
-.PHONY: bootstrap
-bootstrap: install-golangci-lint
-	@echo "Currently no tools required"
-
-## golangci-lint tool used to check linting tools in codebase
+# Bootstrap downloads tools required during build time:
+## Tool1: golangci-lint tool used to check linting tools in codebase
 ## Example: golangci-lint document is not recommending
 ##			to use `go get <path>`. For more info:
 ##          https://golangci-lint.run/usage/install/#install-from-source
 ##
 ## Install golangci-lint only if tool doesn't exist in system
-.PHONY: install-golangci-lint
-install-golangci-lint:
-	$(if $(shell which golangci-lint), echo "golangci-lint already exist in system", (curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sudo sh -s -- -b "${GOPATH}/bin" v1.40.1))
+.PHONY: bootstrap
+bootstrap:
+	@echo "Install golangci-lint tool"
+	$(if $(shell which golangci-lint), @echo "golangci-lint already exist in system", (curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sudo sh -s -- -b "${GOPATH}/bin" v1.40.1))
 
 ## Currently we are running with Default options + other options
 ## Explanation for explicitly mentioned linters:

@@ -28,6 +28,12 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const (
+	// OpenEBSCASLabelKey holds value of OpenEBS CAS label key
+	// This key is helpful to identify type of the volume
+	OpenEBSCASLabelKey = "openebs.io/cas-type"
+)
+
 type controller struct {
 	// name of the controller
 	name string
@@ -72,7 +78,7 @@ func (c *controller) Run(ctx context.Context) error {
 	}
 
 	if c.sync != nil && c.syncPeriod == 0 {
-		return errors.Errorf("syncperiod not set")
+		return errors.Errorf("sync period not set")
 	}
 
 	// if controller has init function then execute it

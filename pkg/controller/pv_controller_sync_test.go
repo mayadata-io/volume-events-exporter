@@ -279,7 +279,7 @@ func TestGetEventSender(t *testing.T) {
 						"nfs.events.openebs.io/finalizer",
 					},
 					Labels: map[string]string{
-						nfspv.OpenEBSCASLabelKey: nfspv.OpenEBSNFSCASLabelValue,
+						OpenEBSCASLabelKey: nfspv.OpenEBSNFSCASLabelValue,
 					},
 					CreationTimestamp: metav1.Now(),
 				},
@@ -298,7 +298,7 @@ func TestGetEventSender(t *testing.T) {
 						"custom.io/volume-protection",
 					},
 					Labels: map[string]string{
-						nfspv.OpenEBSCASLabelKey: nfspv.OpenEBSNFSCASLabelValue,
+						OpenEBSCASLabelKey: nfspv.OpenEBSNFSCASLabelValue,
 					},
 					CreationTimestamp: metav1.Now(),
 					DeletionTimestamp: func() *metav1.Time { t := metav1.Now(); return &t }(),
@@ -320,7 +320,7 @@ func TestGetEventSender(t *testing.T) {
 						"nfs.events.openebs.io/finalizer",
 					},
 					Labels: map[string]string{
-						nfspv.OpenEBSCASLabelKey: nfspv.OpenEBSNFSCASLabelValue,
+						OpenEBSCASLabelKey: nfspv.OpenEBSNFSCASLabelValue,
 					},
 					CreationTimestamp: metav1.Now(),
 					DeletionTimestamp: func() *metav1.Time { t := metav1.Now(); return &t }(),

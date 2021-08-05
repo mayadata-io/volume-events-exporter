@@ -24,6 +24,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/mayadata-io/volume-events-exporter/pkg/collectorinterface"
+	"github.com/mayadata-io/volume-events-exporter/pkg/helper"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
@@ -442,7 +443,17 @@ func TestCollectDeleteEvents(t *testing.T) {
 			isErrExpected: true,
 			dataType:      collectorinterface.JSONDataType,
 		},
-		"when nfs pv is not marked for deletion": {
+		"when all nfs volume resources exist in the system but datatype is not supported": {
+			nfsPVC: &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "pvc4",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.Now(),
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					VolumeName: "pv4",
+				},
+			},
 			nfsPV: &corev1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:              "pv4",
@@ -475,59 +486,6 @@ func TestCollectDeleteEvents(t *testing.T) {
 			backendPV: &corev1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:              "backend-pv4",
-					CreationTimestamp: metav1.Now(),
-					Finalizers: []string{
-						"kubernetes.io/pv-protection",
-						"nfs.events.openebs.io/finalizer",
-					},
-				},
-			},
-			isErrExpected: true,
-			dataType:      collectorinterface.JSONDataType,
-		},
-		"when all nfs volume resources exist in the system but datatype is not supported": {
-			nfsPVC: &corev1.PersistentVolumeClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:              "pvc5",
-					Namespace:         "ns1",
-					CreationTimestamp: metav1.Now(),
-				},
-				Spec: corev1.PersistentVolumeClaimSpec{
-					VolumeName: "pv5",
-				},
-			},
-			nfsPV: &corev1.PersistentVolume{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:              "pv5",
-					CreationTimestamp: metav1.Now(),
-					Finalizers: []string{
-						"kubernetes.io/pv-protection",
-						"nfs.events.openebs.io/finalizer",
-					},
-				},
-				Spec: corev1.PersistentVolumeSpec{
-					ClaimRef: &corev1.ObjectReference{
-						Name:      "pvc5",
-						Namespace: "ns1",
-					},
-				},
-			},
-			backendPVC: &corev1.PersistentVolumeClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:              "nfs-pv5",
-					Namespace:         "openebs",
-					CreationTimestamp: metav1.Now(),
-					Finalizers: []string{
-						"nfs.events.openebs.io/finalizer",
-					},
-				},
-				Spec: corev1.PersistentVolumeClaimSpec{
-					VolumeName: "backend-pv5",
-				},
-			},
-			backendPV: &corev1.PersistentVolume{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:              "backend-pv5",
 					CreationTimestamp: metav1.Now(),
 					Finalizers: []string{
 						"kubernetes.io/pv-protection",
@@ -1045,7 +1003,7 @@ func RemoveEventFinalizer(t *testing.T) {
 						t.Fatalf("error shouldn't occur while fetching PV %s error: %v", test.nfsPV.Name, err)
 					}
 					// If finalizer exist fail the test case
-					isFinalizerRemoved := removeFinalizer(&pv.ObjectMeta, eventFinalizer)
+					isFinalizerRemoved := helper.RemoveFinalizer(&pv.ObjectMeta, eventFinalizer)
 					if isFinalizerRemoved {
 						t.Fatalf("event finalizer shouldn't exist on PV %s", pv.Name)
 					}
@@ -1057,7 +1015,7 @@ func RemoveEventFinalizer(t *testing.T) {
 						t.Fatalf("error shouldn't occur while fetching PVC %s error: %v", test.nfsPVC.Name, err)
 					}
 					// If finalizer exist fail the test case
-					isFinalizerRemoved := removeFinalizer(&pvc.ObjectMeta, eventFinalizer)
+					isFinalizerRemoved := helper.RemoveFinalizer(&pvc.ObjectMeta, eventFinalizer)
 					if isFinalizerRemoved {
 						t.Fatalf("event finalizer shouldn't exist on PVC %s/%s", pvc.Namespace, pvc.Name)
 					}
@@ -1069,7 +1027,7 @@ func RemoveEventFinalizer(t *testing.T) {
 						t.Fatalf("error shouldn't occur while fetching PV %s error: %v", test.backendPV.Name, err)
 					}
 					// If finalizer exist fail the test case
-					isFinalizerRemoved := removeFinalizer(&pv.ObjectMeta, eventFinalizer)
+					isFinalizerRemoved := helper.RemoveFinalizer(&pv.ObjectMeta, eventFinalizer)
 					if isFinalizerRemoved {
 						t.Fatalf("event finalizer shouldn't exist on PV %s", pv.Name)
 					}

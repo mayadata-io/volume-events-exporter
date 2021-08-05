@@ -33,7 +33,7 @@ const (
 )
 
 type TokenClient struct {
-	// server url holds the URL to communicate with server
+	// serverURL holds the URL to communicate with server
 	serverURL string
 
 	// serverAuthToken holds the token of the server

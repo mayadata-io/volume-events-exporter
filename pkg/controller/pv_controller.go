@@ -22,7 +22,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/mayadata-io/volume-events-exporter/pkg/env"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	corev1informer "k8s.io/client-go/informers/core/v1"
@@ -55,16 +54,6 @@ type PVEventController struct {
 
 	// recorder is an event recorder for recording Event resources to Kubernetes API.
 	recorder record.EventRecorder
-
-	// workqueue is a rate limited work queue. This is used to queue work to be
-	// processed instead of performing it as soon as a change happens. This
-	// means we can ensure we only process a fixed amount of resources at a
-	// time, and makes it easy to ensure we are never processing the same item
-	// simultaneously in two different workers.
-	// workqueue workqueue.RateLimitingInterface
-
-	// nfsServerNamespace states the namespace of NFSServer deployment
-	nfsServerNamespace string
 }
 
 // NewPVEventController will create new instantance of PVEventController
@@ -73,17 +62,16 @@ func NewPVEventController(kubeClientset kubernetes.Interface,
 	pvcInformer corev1informer.PersistentVolumeClaimInformer,
 	numWorker int) Controller {
 	eventBroadcaster := record.NewBroadcaster()
-	// eventBroadcaster.StartLogging(klog.Infof)
+	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeClientset.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: volumeEventControllerName})
 
 	pvEventController := &PVEventController{
-		controller:         newController(volumeEventControllerName, numWorker),
-		kubeClientset:      kubeClientset,
-		pvcLister:          pvcInformer.Lister(),
-		pvLister:           pvInformer.Lister(),
-		recorder:           recorder,
-		nfsServerNamespace: env.GetNFSServerNamespace(),
+		controller:    newController(volumeEventControllerName, numWorker),
+		kubeClientset: kubeClientset,
+		pvcLister:     pvcInformer.Lister(),
+		pvLister:      pvInformer.Lister(),
+		recorder:      recorder,
 	}
 	pvEventController.reconcile = pvEventController.processVolumeEvents
 	pvEventController.reconcilePeriod = GetSyncInterval()
@@ -110,7 +98,6 @@ func (pController *PVEventController) addPV(obj interface{}) {
 }
 
 func (pController *PVEventController) updatePV(oldObj, newObj interface{}) {
-	//TODO: Undo below comments if required
 	pvObj, ok := newObj.(*corev1.PersistentVolume)
 	if !ok {
 		runtime.HandleError(fmt.Errorf("Couldn't get PV object %#v", newObj))

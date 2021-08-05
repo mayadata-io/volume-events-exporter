@@ -39,8 +39,8 @@ const (
 )
 
 // processVolumeEvents reconciles PersistentVolume and will
-// send volume information to configured callback URL if it is required
-// send (or) volume event information is not yet sent
+// send volume information to configured callback URL only if volume
+// is marked to send volume information
 func (pController *PVEventController) processVolumeEvents(key string) (bool, error) {
 	klog.V(4).Infof("Started syncing PV: %s to send send metrics information", key)
 
@@ -71,10 +71,12 @@ func (pController *PVEventController) processVolumeEvents(key string) (bool, err
 	return true, err
 }
 
+// sync will send volume create and delete information to configured REST services
+// NOTE: It will ensure to send event information only once
 func (pController *PVEventController) sync(pvObj *corev1.PersistentVolume) error {
 	klog.V(4).Infof("Reconciling PV %s to send volume events", pvObj.Name)
 	if !shouldSendEvent(pvObj) {
-		// If it is not required to send event
+		// If no action is required then return from here
 		return nil
 	}
 
@@ -131,8 +133,11 @@ func (pController *PVEventController) sendCreateEvent(
 	return nil
 }
 
-// sendDeleteEvent will push delete volume events to configured server
-// NOTE: If event is already sent then sendDeleteEvent will return nil
+// sendDeleteEvent will push delete volume events to configured REST server.
+// If response from server is `OK` then sendDeleteEvent will remove event
+// finalizer(events.openebs.io/finalizer) on all corresponding resources
+// NOTE: If event is already sent then following func will only remove finalizers
+//       from dependent resource
 func (pController *PVEventController) sendDeleteEvent(
 	eventSender collectorinterface.EventsSender,
 	pvObj *corev1.PersistentVolume) error {
@@ -150,6 +155,7 @@ func (pController *PVEventController) sendDeleteEvent(
 				return errors.Wrapf(err, "failed to send delete event data of volume %s to server", pvObj.Name)
 			}
 
+			// Annotate resource saying delete event is sent to REST server
 			_, err = eventSender.AnnotateDeleteEvent(pvObj)
 			if err != nil {
 				return errors.Wrapf(err, "failed to annotate volume %s with delete event information", pvObj.Name)
@@ -165,19 +171,31 @@ func (pController *PVEventController) sendDeleteEvent(
 	return nil
 }
 
+// getEventSender will return event sender which implements all the methods of event sender interface
 func (pController *PVEventController) getEventSender(pvObj *corev1.PersistentVolume) (collectorinterface.EventsSender, error) {
 	// Add more types based on underlying volume type
-	if value, ok := pvObj.Labels[nfspv.OpenEBSCASLabelKey]; ok && value == nfspv.OpenEBSNFSCASLabelValue {
+	casType, isCASTypeExist := pvObj.Labels[OpenEBSCASLabelKey]
+	if !isCASTypeExist {
+		// If volume is provisioned via CSI
+		if pvObj.Spec.CSI != nil {
+			casType = pvObj.Spec.CSI.VolumeAttributes[OpenEBSCASLabelKey]
+		}
+	}
+
+	if casType == "" {
+		return nil, errors.Errorf("CAS type is not found on volume %s", pvObj.Name)
+	}
+	switch casType {
+	case nfspv.OpenEBSNFSCASLabelValue:
 		return tokenauth.NewTokenClient(
 			nfspv.NewNFSVolume(
 				pController.kubeClientset,
 				pController.pvcLister,
 				pController.pvLister,
 				pvObj,
-				pController.nfsServerNamespace,
 				collectorinterface.JSONDataType)), nil
 	}
-	return nil, errors.Errorf("event sender is not available for volume %s", pvObj.Name)
+	return nil, errors.Errorf("event sender is not available for volume %s of CAS type %s", pvObj.Name, casType)
 }
 
 // shouldSendEvent will return true based on following conditions:

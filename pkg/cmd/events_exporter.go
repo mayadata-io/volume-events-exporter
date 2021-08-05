@@ -57,10 +57,6 @@ const (
 // StartVolumeEventsController will start volume events collector controller
 func StartVolumeEventsController() error {
 	klog.InitFlags(nil)
-	err := flag.Set("logtostderr", "true")
-	if err != nil {
-		return errors.Wrap(err, "failed to set logtostderr flag")
-	}
 	flag.Parse()
 
 	cfg, err := getClusterConfig(*kubeconfig)
@@ -86,12 +82,8 @@ func StartVolumeEventsController() error {
 
 	run := func(ctx context.Context) {
 
-		wg.Add(1)
 		// Start registered informers
-		go func() {
-			kubeInformerFactory.Start(stopCh)
-			wg.Done()
-		}()
+		kubeInformerFactory.Start(stopCh)
 
 		wg.Add(1)
 		// Start PV controller to send volume event information

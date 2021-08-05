@@ -19,21 +19,20 @@ package nfspv
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	"github.com/mayadata-io/volume-events-exporter/pkg/collectorinterface"
+	"github.com/mayadata-io/volume-events-exporter/pkg/env"
+	"github.com/mayadata-io/volume-events-exporter/pkg/helper"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/client-go/kubernetes"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 )
 
 const (
-	OpenEBSCASLabelKey      = "openebs.io/cas-type"
 	OpenEBSNFSCASLabelValue = "nfs-kernel"
 )
 
@@ -48,8 +47,9 @@ type nfsVolume struct {
 
 	pvcLister corev1listers.PersistentVolumeClaimLister
 
-	pvLister           corev1listers.PersistentVolumeLister
-	pvObj              *corev1.PersistentVolume
+	pvLister corev1listers.PersistentVolumeLister
+	pvObj    *corev1.PersistentVolume
+	// nfsServerNamespace states the namespace of NFSServer deployment
 	nfsServerNamespace string
 	annotationPrefix   string
 	// dataType represents the type of the data that server
@@ -62,14 +62,13 @@ func NewNFSVolume(
 	pvcLister corev1listers.PersistentVolumeClaimLister,
 	pvLister corev1listers.PersistentVolumeLister,
 	pvObj *corev1.PersistentVolume,
-	nfsServerNamespace string,
 	dataType collectorinterface.DataType) collectorinterface.VolumeEventCollector {
 	return &nfsVolume{
 		clientset:          clientset,
 		pvcLister:          pvcLister,
 		pvLister:           pvLister,
 		pvObj:              pvObj,
-		nfsServerNamespace: nfsServerNamespace,
+		nfsServerNamespace: env.GetNFSServerNamespace(),
 		annotationPrefix:   "nfs.",
 		dataType:           dataType,
 	}
@@ -84,7 +83,6 @@ func NewNFSVolume(
 //		 timestamp for create event we are mutating deletion timestamp
 //		 fields with nil value.
 func (n *nfsVolume) CollectCreateEvents() (string, error) {
-
 	volumeData, err := n.getVolumeData()
 	if err != nil {
 		return "", err
@@ -119,10 +117,6 @@ func (n *nfsVolume) CollectCreateEvents() (string, error) {
 }
 
 func (n *nfsVolume) CollectDeleteEvents() (string, error) {
-	// TODO: Is below check required?
-	if n.pvObj.DeletionTimestamp == nil {
-		return "", errors.Errorf("volume is not yet marked for deletion")
-	}
 	if !n.isSupportedDataType() {
 		return "", errors.Errorf("data type %q is not supported. Supported types %v", n.dataType, supportedDataTypes)
 	}
@@ -159,7 +153,7 @@ func (n *nfsVolume) AnnotateDeleteEvent(pvObj *corev1.PersistentVolume) (*corev1
 	annoKey := n.annotationPrefix + collectorinterface.VolumeDeleteEventAnnotation
 	pvCopy.Annotations[annoKey] = collectorinterface.OpenebsEventSentAnnotationValue
 
-	patchBytes, _, err := getPatchData(pvObj, pvCopy)
+	patchBytes, _, err := helper.GetPatchData(pvObj, pvCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +163,9 @@ func (n *nfsVolume) AnnotateDeleteEvent(pvObj *corev1.PersistentVolume) (*corev1
 	if err != nil {
 		return nil, err
 	}
-	// Update inmemory reference
+	// Updating inmemory reference is required because after annotating with delete event
+	// information we are removing finalizers on PV. To avoid update conflicts we are updating
+	// in-memory reference to point to updated object
 	n.pvObj = newPVObj
 	return newPVObj, nil
 }
@@ -213,7 +209,7 @@ func (n *nfsVolume) RemoveEventFinalizer() error {
 }
 
 func (n *nfsVolume) removeFinalizerOnPVC(pvcObj *corev1.PersistentVolumeClaim, finalizer string) error {
-	isFinalizerRemoved := removeFinalizer(&pvcObj.ObjectMeta, finalizer)
+	isFinalizerRemoved := helper.RemoveFinalizer(&pvcObj.ObjectMeta, finalizer)
 	if !isFinalizerRemoved {
 		// If finalizer is not deleted means finalizer doesn't exist so no need take action
 		return nil
@@ -228,7 +224,7 @@ func (n *nfsVolume) removeFinalizerOnPVC(pvcObj *corev1.PersistentVolumeClaim, f
 }
 
 func (n *nfsVolume) removeFinalizerOnPV(pvObj *corev1.PersistentVolume, finalizer string) error {
-	isFinalizerRemoved := removeFinalizer(&pvObj.ObjectMeta, finalizer)
+	isFinalizerRemoved := helper.RemoveFinalizer(&pvObj.ObjectMeta, finalizer)
 	if !isFinalizerRemoved {
 		// If finalizer is not deleted means finalizer doesn't exist so no need take action
 		return nil
@@ -240,22 +236,6 @@ func (n *nfsVolume) removeFinalizerOnPV(pvObj *corev1.PersistentVolume, finalize
 		return errors.Wrapf(err, "failed to delete %s finalizer on PV %s", finalizer, pvObj.Name)
 	}
 	return nil
-}
-
-func removeFinalizer(objectMeta *metav1.ObjectMeta, finalizer string) bool {
-	originalFinalizers := objectMeta.GetFinalizers()
-
-	var finalizerCopy []string
-	var isFinalizerExist bool
-	for _, curFinalizer := range originalFinalizers {
-		if curFinalizer == finalizer {
-			isFinalizerExist = true
-			continue
-		}
-		finalizerCopy = append(finalizerCopy, curFinalizer)
-	}
-	objectMeta.Finalizers = finalizerCopy
-	return isFinalizerExist
 }
 
 func (n *nfsVolume) getVolumeData() (*NFSVolumeData, error) {
@@ -274,12 +254,12 @@ func (n *nfsVolume) getVolumeData() (*NFSVolumeData, error) {
 	backendPVCName := "nfs-" + nfsPV.Name
 	backendPVC, err := n.getPVCCopy(n.nfsServerNamespace, backendPVCName)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get PVC {%s/%s}", n.nfsServerNamespace, backendPVCName)
+		return nil, errors.Wrapf(err, "failed to get backing PVC {%s/%s}", n.nfsServerNamespace, backendPVCName)
 	}
 
 	backendPV, err := n.getPVCopy(backendPVC.Spec.VolumeName)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get PV %s", backendPVC.Spec.VolumeName)
+		return nil, errors.Wrapf(err, "failed to get backing PV %s", backendPVC.Spec.VolumeName)
 	}
 
 	return &NFSVolumeData{
@@ -321,20 +301,4 @@ func (n *nfsVolume) isSupportedDataType() bool {
 	default:
 		return false
 	}
-}
-
-func getPatchData(oldObj, newObj interface{}) ([]byte, []byte, error) {
-	oldData, err := json.Marshal(oldObj)
-	if err != nil {
-		return nil, nil, fmt.Errorf("marshal old object failed: %v", err)
-	}
-	newData, err := json.Marshal(newObj)
-	if err != nil {
-		return nil, nil, fmt.Errorf("mashal new object failed: %v", err)
-	}
-	patchBytes, err := strategicpatch.CreateTwoWayMergePatch(oldData, newData, oldObj)
-	if err != nil {
-		return nil, nil, fmt.Errorf("CreateTwoWayMergePatch failed: %v", err)
-	}
-	return patchBytes, oldData, nil
 }

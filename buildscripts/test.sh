@@ -31,7 +31,6 @@ fi
 #  exit 0
 #fi
 
-echo "" > coverage.txt
 PACKAGES=$(go list ./... | grep -v '/vendor/\|/pkg/apis/\|/pkg/client/\|tests')
 for d in $PACKAGES; do
 	go test -coverprofile=profile.out -covermode=atomic "$d"

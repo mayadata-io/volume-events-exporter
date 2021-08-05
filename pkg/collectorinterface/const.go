@@ -17,10 +17,18 @@ limitations under the License.
 package collectorinterface
 
 const (
-	VolumeCreateEventAnnotation     = "event.openebs.io/volume-create"
-	VolumeDeleteEventAnnotation     = "event.openebs.io/volume-delete"
+	// VolumeCreateEventAnnotation holds annotation key which represents
+	// status of volume creation event
+	VolumeCreateEventAnnotation = "event.openebs.io/volume-create"
+	// VolumeDeleteEventAnnotation holds annotation key which represents
+	// status of volume deletion event
+	VolumeDeleteEventAnnotation = "event.openebs.io/volume-delete"
+	// OpenebsEventSentAnnotationValue holds annotation value which states
+	// corresponding volume event was sent to server
 	OpenebsEventSentAnnotationValue = "sent"
-	VolumeEventsFinalizer           = "events.openebs.io/finalizer"
+	// VolumeEventsFinalizer holds finalizer value to ensure delivery of volume
+	// events
+	VolumeEventsFinalizer = "events.openebs.io/finalizer"
 )
 
 type DataType string

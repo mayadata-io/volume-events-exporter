@@ -73,6 +73,7 @@ func (d *TokenClient) Send(data string) error {
 
 	req, err := http.NewRequest(postMethod, d.serverURL, bytes.NewBuffer(payload))
 	if err != nil {
+		// NOTE: If we are unable to connect then server information will be exposed to user
 		return err
 	}
 	req.Header.Set("Content-Type", contentType)

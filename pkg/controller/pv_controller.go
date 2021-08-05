@@ -23,7 +23,8 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	corev1informer "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -52,19 +53,32 @@ type PVEventController struct {
 	// pvLister can list/get PersistentVolumes from the shared informer's  store
 	pvLister corev1listers.PersistentVolumeLister
 
-	// recorder is an event recorder for recording Event resources to Kubernetes API.
-	recorder record.EventRecorder
+	// Recorder is an event recorder for recording Event resources to Kubernetes API.
+	recorder *Recorder
+}
+
+// Recorder is a wrapper over EventRecorder which helps to
+// control event generation
+type Recorder struct {
+	record.EventRecorder
+	// generateEvents will control the event generation based on its value
+	generateEvents bool
 }
 
 // NewPVEventController will create new instantance of PVEventController
 func NewPVEventController(kubeClientset kubernetes.Interface,
 	pvInformer corev1informer.PersistentVolumeInformer,
 	pvcInformer corev1informer.PersistentVolumeClaimInformer,
-	numWorker int) Controller {
+	numWorker int,
+	generateEvents bool) Controller {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeClientset.CoreV1().Events("")})
-	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: volumeEventControllerName})
+	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: volumeEventControllerName})
+	recorder := &Recorder{
+		EventRecorder:  eventRecorder,
+		generateEvents: generateEvents,
+	}
 
 	pvEventController := &PVEventController{
 		controller:    newController(volumeEventControllerName, numWorker),
@@ -90,7 +104,7 @@ func NewPVEventController(kubeClientset kubernetes.Interface,
 func (pController *PVEventController) addPV(obj interface{}) {
 	pvObj, ok := obj.(*corev1.PersistentVolume)
 	if !ok {
-		runtime.HandleError(fmt.Errorf("Couldn't get PV object %#v", obj))
+		utilruntime.HandleError(fmt.Errorf("Couldn't get PV object %#v", obj))
 		return
 	}
 	klog.V(4).Infof("Queuing PV %s for add event", pvObj.Name)
@@ -100,7 +114,7 @@ func (pController *PVEventController) addPV(obj interface{}) {
 func (pController *PVEventController) updatePV(oldObj, newObj interface{}) {
 	pvObj, ok := newObj.(*corev1.PersistentVolume)
 	if !ok {
-		runtime.HandleError(fmt.Errorf("Couldn't get PV object %#v", newObj))
+		utilruntime.HandleError(fmt.Errorf("Couldn't get PV object %#v", newObj))
 		return
 	}
 	klog.V(4).Infof("Queuing PV %s for update event", pvObj.Name)
@@ -110,7 +124,7 @@ func (pController *PVEventController) updatePV(oldObj, newObj interface{}) {
 func (pController *PVEventController) deletePV(obj interface{}) {
 	pvObj, ok := obj.(*corev1.PersistentVolume)
 	if !ok {
-		runtime.HandleError(fmt.Errorf("Couldn't get PV object %#v", obj))
+		utilruntime.HandleError(fmt.Errorf("Couldn't get PV object %#v", obj))
 		return
 	}
 	klog.V(4).Infof("Queuing PV %s for delete event", pvObj.Name)
@@ -127,4 +141,28 @@ func GetSyncInterval() time.Duration {
 		return sharedInformerInterval
 	}
 	return time.Duration(resyncInterval) * time.Second
+}
+
+// Event is a wrapper over original Event which will help to generate events
+func (r *Recorder) Event(object runtime.Object, eventtype, reason, message string) {
+	if !r.generateEvents {
+		return
+	}
+	r.EventRecorder.Event(object, eventtype, reason, message)
+}
+
+// Eventf is wrapper over original Eventf, it is just like Event, but with Sprintf for the message field.
+func (r *Recorder) Eventf(object runtime.Object, eventtype, reason, messageFmt string, args ...interface{}) {
+	if !r.generateEvents {
+		return
+	}
+	r.EventRecorder.Eventf(object, eventtype, reason, messageFmt, args...)
+}
+
+// AnnotatedEventf is wrapper over original AnnotatedEventd just like eventf, but with annotations attached
+func (r *Recorder) AnnotatedEventf(object runtime.Object, annotations map[string]string, eventtype, reason, messageFmt string, args ...interface{}) {
+	if !r.generateEvents {
+		return
+	}
+	r.EventRecorder.AnnotatedEventf(object, annotations, eventtype, reason, messageFmt, args...)
 }

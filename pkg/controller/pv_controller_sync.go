@@ -62,10 +62,9 @@ func (pController *PVEventController) processVolumeEvents(key string) (bool, err
 	}
 
 	err = pController.sync(pvObj)
-	// TODO: If events needs to be generated undo the comments
-	// if err != nil {
-	// 	pController.Recorder.Event(pvObj, corev1.EventTypeWarning, "EventInformation", err.Error())
-	// }
+	if err != nil {
+		pController.recorder.Event(pvObj, corev1.EventTypeWarning, "EventInformation", err.Error())
+	}
 
 	// Something went wrong let's retry after sometime
 	return true, err
@@ -84,9 +83,6 @@ func (pController *PVEventController) sync(pvObj *corev1.PersistentVolume) error
 	eventSender, err := pController.getEventSender(pvObj)
 	if err != nil {
 		return err
-	}
-	if eventSender == nil {
-		return nil
 	}
 
 	// Send create event information
@@ -128,6 +124,7 @@ func (pController *PVEventController) sendCreateEvent(
 		if err != nil {
 			return err
 		}
+		pController.recorder.Event(pvObj, corev1.EventTypeNormal, "EventInformation", "Exported volume create information")
 		klog.Infof("Successfully sent create volume %s event to server", pvObj.Name)
 	}
 	return nil
@@ -160,6 +157,7 @@ func (pController *PVEventController) sendDeleteEvent(
 			if err != nil {
 				return errors.Wrapf(err, "failed to annotate volume %s with delete event information", pvObj.Name)
 			}
+			pController.recorder.Event(pvObj, corev1.EventTypeNormal, "EventInformation", "Exported volume delete information")
 			klog.Infof("Successfully sent delete volume %s event to server", pvObj.Name)
 		}
 

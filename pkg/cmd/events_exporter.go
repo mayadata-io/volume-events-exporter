@@ -43,8 +43,9 @@ const (
 // Command line flags
 var (
 	kubeconfig              = flag.String("kubeconfig", "", "Path for kube config")
-	leaderElection          = flag.Bool("leader-election", false, "Enables leader election.")
-	leaderElectionNamespace = flag.String("leader-election-namespace", "", "The namespace where the leader election resource exists. Defaults to the pod namespace if not set.")
+	generateK8sEvents       = flag.Bool("generate-k8s-events", false, "Enables generating Normal & Warning Kubernetes based events")
+	leaderElection          = flag.Bool("leader-election", false, "Enables leader election")
+	leaderElectionNamespace = flag.String("leader-election-namespace", "", "The namespace where the leader election resource exists. Defaults to the pod namespace if not set")
 )
 
 const (
@@ -74,7 +75,7 @@ func StartVolumeEventsController() error {
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, controller.GetSyncInterval())
 	pvInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
 	pvcInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
-	pController := controller.NewPVEventController(kubeClient, pvInformer, pvcInformer, volumeEventControllerWorkers)
+	pController := controller.NewPVEventController(kubeClient, pvInformer, pvcInformer, volumeEventControllerWorkers, *generateK8sEvents)
 
 	// set up signals so we handle the first shutdown signal gracefully
 	stopCh := signals.SetupSignalHandler()

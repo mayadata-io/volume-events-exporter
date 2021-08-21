@@ -165,6 +165,7 @@ spec:
         image: mayadataio/volume-events-exporter:ci
         args:
           - "--leader-election=false"
+          - "--generate-k8s-events=true"
         env:
         # OPENEBS_IO_NFS_SERVER_NS defines the namespace of nfs-server deployment
         #- name: OPENEBS_IO_NFS_SERVER_NS

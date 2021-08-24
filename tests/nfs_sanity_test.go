@@ -249,34 +249,3 @@ func markNFSResources(nfsPVCNamespace, nfsPVCName string) error {
 	}
 	return nil
 }
-
-// nfsPVObj, err := Client.getPV(nfsPVCObj.Spec.VolumeName)
-// Expect(err).To(BeNil(), "while fetching NFS pv %s", nfsPVCObj.Spec.VolumeName)
-// Expect(isFinalizerExist(&nfsPVObj.ObjectMeta, nfs.ProvisionedFinalizerProtection)).To(BeTrue(), "NFS pv %s details are not exported to server for create event")
-
-// nfsPVName = nfsPVObj.Name
-// backendPVCName = "nfs-" + nfsPVName
-// backendPVC, err := Client.getPVC(OpenEBSNamespace, backendPVCName)
-// Expect(err).To(BeNil(), "while fetching backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
-// Expect(isFinalizerExist(&backendPVC.ObjectMeta, nfs.ProvisionedFinalizerProtection)).To(BeTrue(), "backend pvc %s/%s details are not exported to server for create event", OpenEBSNamespace, backendPVCName)
-
-// backendPVName = backendPVC.Spec.VolumeName
-// backendPVObj, err := Client.getPV(backendPVC.Spec.VolumeName)
-// Expect(err).To(BeNil(), "while fetching backend pv %s", backendPVC.Spec.VolumeName)
-// Expect(isFinalizerExist(&backendPVObj.ObjectMeta, nfs.ProvisionedFinalizerProtection)).To(BeTrue(), "backend pv %s details are not exported to server for create event", backendPVObj.Name)
-
-// // Remove event finalizers on backend PVC
-// backendPVC, err := Client.getPVC(OpenEBSNamespace, backendPVCName)
-// Expect(err).To(BeNil(), "while fetching backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
-// removeFinalizer(&backendPVC.ObjectMeta, nfs.ProvisionedFinalizerProtection)
-// removeFinalizer(&backendPVC.ObjectMeta, nfs.DeProvisionedFinalizerProtection)
-// _, err = Client.updatePVC(backendPVC)
-// Expect(err).To(BeNil(), "while removing event finalizers on backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
-
-// // Remove event finalizer on backend PV
-// backendPV, err := Client.getPV(backendPVName)
-// Expect(err).To(BeNil(), "while fetching NFS pv %s", backendPVName)
-// removeFinalizer(&backendPV.ObjectMeta, nfs.ProvisionedFinalizerProtection)
-// removeFinalizer(&backendPV.ObjectMeta, nfs.DeProvisionedFinalizerProtection)
-// _, err = Client.updatePV(backendPV)
-// Expect(err).To(BeNil(), "while removing event finalzers on backend pv %s", backendPVName)

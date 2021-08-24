@@ -43,6 +43,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/reference"
+	"k8s.io/klog/v2"
 )
 
 // KubeClient interface for k8s API
@@ -331,8 +332,11 @@ func dumpK8sObject(obj runtime.Object) {
 	}
 
 	buf := new(bytes.Buffer)
-	encoder.Encode(obj, buf)
-	fmt.Println(string(buf.Bytes()))
+	err := encoder.Encode(obj, buf)
+	if err != nil {
+		klog.Errorf("failed to encode object error: %v", err)
+	}
+	fmt.Println(buf.String())
 }
 
 func (k *KubeClient) createStorageClass(sc *storagev1.StorageClass) error {
@@ -455,7 +459,7 @@ func (k *KubeClient) waitForDeploymentRollout(ns, deployment string) error {
 		if deploy.Generation <= deploy.Status.ObservedGeneration {
 			// If Progressing condition's reason is ProgressDeadlineExceeded then it is not rolled out.
 			if cond != nil && cond.Reason == "ProgressDeadlineExceeded" {
-				return false, errors.New(fmt.Sprintf("deployment exceeded its progress deadline"))
+				return false, errors.New("deployment exceeded its progress deadline")
 			}
 			// if deploy.Status.UpdatedReplicas < *deploy.Spec.Replicas then some of the replicas are updated
 			// and some of them are not. It marked IsRolledout as false and update message accordingly
@@ -491,15 +495,6 @@ func (k *KubeClient) listEvents(namespace string) (*corev1.EventList, error) {
 
 // TODO: Move to some package where code will also use it
 
-func isFinalizerExist(metadata *metav1.ObjectMeta, expectedFinalizer string) bool {
-	for _, finalizer := range metadata.Finalizers {
-		if finalizer == expectedFinalizer {
-			return true
-		}
-	}
-	return false
-}
-
 func removeFinalizer(metadata *metav1.ObjectMeta, expectedFinalizer string) {
 	for idx, finalizer := range metadata.Finalizers {
 		if finalizer == expectedFinalizer {
@@ -507,5 +502,4 @@ func removeFinalizer(metadata *metav1.ObjectMeta, expectedFinalizer string) {
 			return
 		}
 	}
-	return
 }

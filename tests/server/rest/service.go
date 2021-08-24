@@ -45,12 +45,6 @@ type service struct {
 	dataProcessor server.EventsReceiver
 }
 
-type volumeDataType string
-
-const (
-	nfsDataType volumeDataType = "NFSDataType"
-)
-
 // isAuthorized is a token based authentication check that client should pass the token in request Header
 func (s *service) isAuthorized(endpointHandler func(http.ResponseWriter, *http.Request)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +56,7 @@ func (s *service) isAuthorized(endpointHandler func(http.ResponseWriter, *http.R
 				return []byte(s.secretKey), nil
 			})
 			if err != nil {
-				fmt.Fprintf(w, fmt.Sprintf("Failed to parse token error: %s", err.Error()))
+				fmt.Fprintf(w, "Failed to parse token error: %s", err.Error())
 			}
 
 			if token.Valid {
@@ -84,12 +78,17 @@ func (s *service) eventsHandler(resp http.ResponseWriter, req *http.Request) {
 		httpCode = 500
 		message = errors.Wrapf(err, "failed to process data").Error()
 		resp.WriteHeader(httpCode)
-		resp.Write([]byte(message))
+		_, err = resp.Write([]byte(message))
+		if err != nil {
+			klog.Errorf("Failed to send error response: %s error: %v", message, err)
+		}
 		return
 	}
 	httpCode = 200
 	message = "Ok"
 	resp.WriteHeader(httpCode)
-	resp.Write([]byte(message))
-	return
+	_, err = resp.Write([]byte(message))
+	if err != nil {
+		klog.Errorf("Failed to send response: %s error: %v", message, err)
+	}
 }

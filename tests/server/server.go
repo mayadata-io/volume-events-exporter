@@ -29,7 +29,7 @@ type ServerInterface interface {
 	// if occurs any
 	Stop() error
 
-	// Get token will return an valid token which is used to
+	// GetToken will return an valid token which is used to
 	// interact with server
 	GetToken() string
 

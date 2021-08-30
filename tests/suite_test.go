@@ -61,7 +61,7 @@ func TestSource(t *testing.T) {
 
 func init() {
 	flag.StringVar(&kubeConfigPath, "kubeconfig", os.Getenv("KUBECONFIG"), "path to kubeconfig to invoke kubernetes API calls")
-	flag.StringVar(&ipAddress, "address", "", "address on which server will start. Defaults to machine IP Address")
+	flag.StringVar(&ipAddress, "address", "", "address on which server(event listener) will start. Defaults to machine IP Address")
 	flag.IntVar(&port, "port", 9090, "port on which server will listen. Defaults to 9090")
 	flag.StringVar(&serverType, "type", "rest", "type of the server to serve service. Supported only REST")
 }

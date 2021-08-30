@@ -45,7 +45,10 @@ type service struct {
 	dataProcessor server.EventsReceiver
 }
 
-// isAuthorized is a token based authentication check that client should pass the token in request Header
+// isAuthorized is a token based authentication handler(as middleware) which returns handler
+// containing following functionality:
+// 1. verify whether received token is valid or not. If it is valid token provided endpoint
+//	  will be executed else error will be returned to the client
 func (s *service) isAuthorized(endpointHandler func(http.ResponseWriter, *http.Request)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header["Token"] != nil {
@@ -63,7 +66,13 @@ func (s *service) isAuthorized(endpointHandler func(http.ResponseWriter, *http.R
 				endpointHandler(w, r)
 			}
 		} else {
-			fmt.Fprintf(w, "UnAuthorized!! Access Denied")
+			httpCode := 403
+			message := "UnAuthorized!! Access Denied"
+			w.WriteHeader(httpCode)
+			_, err := w.Write([]byte(message))
+			if err != nil {
+				klog.Errorf("Failed to send error response: %s error: %v", message, err)
+			}
 		}
 	})
 }

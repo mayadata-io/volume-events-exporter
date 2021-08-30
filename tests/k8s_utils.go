@@ -14,7 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// NOTE: This file is ctrl+v from https://github.com/openebs/dynamic-nfs-provisioner/blob/develop/tests/k8s_utils.go
+// NOTE: This file is copied from
+//		 https://github.com/openebs/dynamic-nfs-provisioner/blob/0e0a8707cd9c952a62ac9d898055628a42ca6e58/tests/k8s_utils.go
+//       and modified according to k8s lib version
 
 package tests
 

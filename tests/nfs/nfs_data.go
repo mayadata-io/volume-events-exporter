@@ -58,13 +58,13 @@ func (n *NFS) ProcessData(req *http.Request) error {
 	}
 
 	if nfsData.VolumeProvisioned != nil {
-		err = n.processProvisionedNFSData(nfsData.VolumeProvisioned)
+		err = n.processProvisionData(nfsData.VolumeProvisioned)
 		if err != nil {
 			return err
 		}
 	}
 	if nfsData.VolumeDeleted != nil {
-		err = n.processDeProvisionedNFSData(nfsData.VolumeDeleted)
+		err = n.processDeProvisionData(nfsData.VolumeDeleted)
 		if err != nil {
 			return err
 		}
@@ -73,8 +73,8 @@ func (n *NFS) ProcessData(req *http.Request) error {
 	return nil
 }
 
-// processProvisionedNFSData will process the data received over network and
-// add followend annotation to backend pvc which is later used to verify in Integration test
+// processProvisionData will process the data received over network and
+// add following annotation to backend pvc which is later used to verify in Integration test
 // - it.nfs.openebs.io/vc-nfspvc: <nfspvc-ns>-<nfspvc-name>
 // - it.nfs.openebs.io/vc-nfspv: <nfs-pv-name>
 // - it.nfs.openebs.io/vc-backend-pvc: <backend-pvc>-<backend-pvc-name>
@@ -84,7 +84,7 @@ func (n *NFS) ProcessData(req *http.Request) error {
 //	  so adding all the details on backend pvc annotation.
 //	- Backend PVC will also add integration test finalizer {it.openebs.io/test-verification}
 //	  during provisioning time which will get removed after after verifying from Integration test
-func (n *NFS) processProvisionedNFSData(nfsVolumeData *nfspv.NFSVolumeData) error {
+func (n *NFS) processProvisionData(nfsVolumeData *nfspv.NFSVolumeData) error {
 	isNFSPVExist := nfsVolumeData.NFSPV != nil
 	isBackendPVCExist := nfsVolumeData.BackingPVC != nil
 	isBackendPVExist := nfsVolumeData.BackingPV != nil
@@ -101,6 +101,16 @@ func (n *NFS) processProvisionedNFSData(nfsVolumeData *nfspv.NFSVolumeData) erro
 	if nfsVolumeData.NFSPV.CreationTimestamp.IsZero() {
 		return errors.Errorf("expected to have creation timestamp on NFS PV %s", nfsVolumeData.NFSPV.Name)
 	}
+	if !nfsVolumeData.NFSPV.DeletionTimestamp.IsZero() {
+		return errors.Errorf("expected no to have deletion timestamp on NFS PV %s", nfsVolumeData.NFSPV.Name)
+	}
+	if !nfsVolumeData.BackingPVC.DeletionTimestamp.IsZero() {
+		return errors.Errorf("expected no to have deletion timestamp on backing PVC %s/%s", nfsVolumeData.BackingPVC.Namespace, nfsVolumeData.BackingPVC.Name)
+	}
+	if !nfsVolumeData.BackingPV.DeletionTimestamp.IsZero() {
+		return errors.Errorf("expected no to have deletion timestamp on backing PV %s", nfsVolumeData.BackingPV.Name)
+	}
+
 	testAnnotations[VolumeCreateNFSPVKey] = nfsVolumeData.NFSPV.Name
 	testAnnotations[VolumeCreateBackendPVCKey] = nfsVolumeData.BackingPVC.Namespace + "-" + nfsVolumeData.BackingPVC.Name
 	testAnnotations[VolumeCreateBackendPVKey] = nfsVolumeData.BackingPV.Name
@@ -123,7 +133,7 @@ func (n *NFS) processProvisionedNFSData(nfsVolumeData *nfspv.NFSVolumeData) erro
 	return nil
 }
 
-// processDeProvisionedNFSData will process the data received over network and
+// processDeProvisionData will process the data received over network and
 // add following annotation to backend pvc which is later used to verify in Integration test
 // - it.nfs.openebs.io/vd-nfspvc: <nfspvc-ns>-<nfspvc-name>
 // - it.nfs.openebs.io/vd-nfspv: <nfs-pv-name>
@@ -134,7 +144,7 @@ func (n *NFS) processProvisionedNFSData(nfsVolumeData *nfspv.NFSVolumeData) erro
 //	  so adding all the details on backend pvc annotation.
 //	- Backend PVC will also add integration test finalizer {it.openebs.io/test-verification}
 //	  during provisioning time which will get removed after after verifying from Integration test
-func (n *NFS) processDeProvisionedNFSData(nfsVolumeData *nfspv.NFSVolumeData) error {
+func (n *NFS) processDeProvisionData(nfsVolumeData *nfspv.NFSVolumeData) error {
 	isNFSPVExist := nfsVolumeData.NFSPV != nil
 	isBackendPVCExist := nfsVolumeData.BackingPVC != nil
 	isBackendPVExist := nfsVolumeData.BackingPV != nil
@@ -174,33 +184,6 @@ func (n *NFS) processDeProvisionedNFSData(nfsVolumeData *nfspv.NFSVolumeData) er
 
 	return nil
 }
-
-// func (n *NFS) updatePVCWithFinalizer(pvcObj *corev1.PersistentVolumeClaim, finalizer string) error {
-// 	for _, f := range pvcObj.Finalizers {
-// 		if f == finalizer {
-// 			return nil
-// 		}
-// 	}
-//
-// 	pvcObj.Finalizers = append(pvcObj.Finalizers, finalizer)
-// 	_, err := n.Clientset.CoreV1().
-// 		PersistentVolumeClaims(pvcObj.Namespace).
-// 		Update(context.TODO(), pvcObj, metav1.UpdateOptions{})
-// 	return err
-// }
-//
-// func (n *NFS) updatePVWithFinalizer(pvObj *corev1.PersistentVolume, finalizer string) error {
-// 	for _, f := range pvObj.Finalizers {
-// 		if f == finalizer {
-// 			return nil
-// 		}
-// 	}
-// 	pvObj.Finalizers = append(pvObj.Finalizers, finalizer)
-// 	_, err := n.Clientset.CoreV1().
-// 		PersistentVolumes().
-// 		Update(context.TODO(), pvObj, metav1.UpdateOptions{})
-// 	return err
-// }
 
 // TODO: Move below function to some common package
 

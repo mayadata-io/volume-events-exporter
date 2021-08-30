@@ -70,6 +70,7 @@ var _ = Describe("TEST NFS PVC CREATE & DELTE EVENTS", func() {
 			Expect(err).To(BeNil(), "while waiting for pvc %s/%s bound phase", applicationNamespace, pvcName)
 			Expect(pvcPhase).To(Equal(corev1.ClaimBound), "pvc %s/%s should be in bound phase", applicationNamespace, pvcName)
 
+			// TODO: Remove below lines after merging https://github.com/openebs/dynamic-nfs-provisioner/pull/97 PR
 			err = markNFSResources(applicationNamespace, pvcName)
 			Expect(err).To(BeNil(), "while makrking for events")
 		})

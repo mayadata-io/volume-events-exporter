@@ -185,6 +185,11 @@ license-check:
 	@echo "--> Done checking license."
 	@echo
 
+.PHONY: sanity-test
+sanity-test: sanity-test
+	@echo "--> Running sanity test";
+	go test -v -timeout 40m ./tests/...
+
 .PHONY: clean
 clean:
 	@echo "--> Cleaning Directory"

@@ -180,7 +180,7 @@ func (n *NFS) processDeProvisionData(nfsVolumeData *nfspv.NFSVolumeData) error {
 	if err != nil {
 		return err
 	}
-	klog.Infof("Addedd annotations %v on backend pvc %s/%s for create event", testAnnotations, nfsVolumeData.BackingPVC.Namespace, nfsVolumeData.BackingPVC.Name)
+	klog.Infof("Addedd annotations %v on backend pvc %s/%s for delete event", testAnnotations, nfsVolumeData.BackingPVC.Namespace, nfsVolumeData.BackingPVC.Name)
 
 	return nil
 }

@@ -81,7 +81,7 @@ var _ = Describe("TEST DELETE EVENTS FOR RELEASED NFS PV WHILE EXPORTER IS DISAB
 		})
 	})
 
-	When("PVC with storageclass openebs-rwx is created", func() {
+	When("PVC with storageclass "+scName+"is created", func() {
 		It("should create a pvc ", func() {
 			By("creating above pvc")
 			err := Client.createPVC(&corev1.PersistentVolumeClaim{
@@ -244,6 +244,8 @@ var _ = Describe("TEST DELETE EVENTS FOR RELEASED NFS PV WHILE EXPORTER IS DISAB
 			err = Client.deletePVC(OpenEBSNamespace, backendPVCName)
 			Expect(err).To(BeNil(), "while deleting backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
 
+			err = Client.deleteService(OpenEBSNamespace, backendPVCName)
+			Expect(err).To(BeNil(), "while deleting service %s/%s", OpenEBSNamespace, backendPVCName)
 		})
 
 		It("should get deleted from cluster", func() {

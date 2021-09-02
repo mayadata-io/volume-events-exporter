@@ -88,7 +88,7 @@ var _ = Describe("TEST RETAINED NFS PVC CREATE EVENTS WHILE EXPORTER IS DISABLED
 		})
 	})
 
-	When("PVC with storageclass openebs-rwx is created", func() {
+	When("PVC with storageclass "+scName+" is created", func() {
 		It("should create a pvc", func() {
 			By("creating above pvc")
 			err := Client.createPVC(&corev1.PersistentVolumeClaim{
@@ -133,9 +133,14 @@ var _ = Describe("TEST RETAINED NFS PVC CREATE EVENTS WHILE EXPORTER IS DISABLED
 		It("should not have sent the events for PVC creation", func() {
 			Expect(backendPVCName).NotTo(BeEmpty(), "backendPVCName should not be empty")
 
-			var isCreateEventReceived bool
+			var (
+				isCreateEventReceived bool
+				backendPVCObj         *corev1.PersistentVolumeClaim
+				err                   error
+			)
+
 			for retry := 5; retry >= 0; retry-- {
-				backendPVCObj, err := Client.getPVC(OpenEBSNamespace, backendPVCName)
+				backendPVCObj, err = Client.getPVC(OpenEBSNamespace, backendPVCName)
 				Expect(err).To(BeNil(), "while fetching backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
 
 				_, isCreateEventReceived = backendPVCObj.Annotations[nfs.VolumeCreateNFSPVKey]
@@ -145,6 +150,15 @@ var _ = Describe("TEST RETAINED NFS PVC CREATE EVENTS WHILE EXPORTER IS DISABLED
 				time.Sleep(time.Second * 5)
 			}
 			Expect(isCreateEventReceived).To(BeFalse(), "volume-event-controller should not send events")
+
+			_, isNFSPVCAnnoExist := backendPVCObj.Annotations[nfs.VolumeCreateNFSPVCKey]
+			_, isNFSPVAnnoExist := backendPVCObj.Annotations[nfs.VolumeCreateNFSPVKey]
+			_, isBackendPVCExist := backendPVCObj.Annotations[nfs.VolumeCreateBackendPVCKey]
+			_, isBackendPVExist := backendPVCObj.Annotations[nfs.VolumeCreateBackendPVKey]
+			Expect(isNFSPVCAnnoExist).To(BeFalse(), "REST service shouldn't receive any create event but has NFS pvc name")
+			Expect(isNFSPVAnnoExist).To(BeFalse(), "REST service shouldn't receive any create event but has NFS pv name")
+			Expect(isBackendPVCExist).To(BeFalse(), "REST service shouldn't receive any create event but has backend pvc name")
+			Expect(isBackendPVExist).To(BeFalse(), "REST service shouldn't receive any create event but has backend pv name")
 		})
 	})
 
@@ -282,9 +296,11 @@ var _ = Describe("TEST RETAINED NFS PVC CREATE EVENTS WHILE EXPORTER IS DISABLED
 			err = Client.deleteDeployment(OpenEBSNamespace, backendPVCName)
 			Expect(err).To(BeNil(), "while deleting deployment %s/%s", OpenEBSNamespace, backendPVCName)
 
+			err = Client.deleteService(OpenEBSNamespace, backendPVCName)
+			Expect(err).To(BeNil(), "while deleting service %s/%s", OpenEBSNamespace, backendPVCName)
+
 			err = Client.deletePVC(OpenEBSNamespace, backendPVCName)
 			Expect(err).To(BeNil(), "while deleting backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
-
 		})
 
 		It("should get deleted from cluster", func() {

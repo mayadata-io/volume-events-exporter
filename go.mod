@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
+	github.com/ghodss/yaml v0.0.0-20150909031657-73d445a93680
 	github.com/google/go-cmp v0.5.4
 	github.com/gorilla/mux v1.8.0
 	github.com/onsi/ginkgo v1.11.0

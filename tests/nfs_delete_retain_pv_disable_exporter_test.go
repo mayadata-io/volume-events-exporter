@@ -217,7 +217,7 @@ var _ = Describe("TEST DELETE EVENTS FOR RETAIN NFS PVC WHILE EXPORTER IS DISABL
 				backingPVCObj, err = Client.getPVC(OpenEBSNamespace, backendPVCName)
 				Expect(err).To(BeNil(), "while fetching backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
 
-				_, isEventReceived = backingPVCObj.Annotations[nfs.VolumeCreateNFSPVCKey]
+				_, isEventReceived = backingPVCObj.Annotations[nfs.VolumeCreateNFSPVKey]
 				if isEventReceived {
 					break
 				}
@@ -226,9 +226,7 @@ var _ = Describe("TEST DELETE EVENTS FOR RETAIN NFS PVC WHILE EXPORTER IS DISABL
 				time.Sleep(time.Second * 10)
 			}
 			Expect(isEventReceived).To(BeTrue(), "NFS pvc %s/%s details are not exported to server", applicationNamespace, pvcName)
-			backendPVC, err := Client.getPVC(OpenEBSNamespace, backendPVCName)
-			Expect(err).To(BeNil(), "while fetching backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
-			backendPVName = backendPVC.Spec.VolumeName
+			backendPVName = backingPVCObj.Spec.VolumeName
 
 			Expect(backingPVCObj.Annotations[nfs.VolumeCreateNFSPVKey]).To(Equal(nfsPVName), "while verifying nfs pv create event data")
 			Expect(backingPVCObj.Annotations[nfs.VolumeCreateBackendPVCKey]).To(Equal(OpenEBSNamespace+"-"+backendPVCName), "while verifying backend pvc create event data")

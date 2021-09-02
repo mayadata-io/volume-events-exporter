@@ -48,6 +48,24 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// Config holds a configuration element
+//
+// For example, it can represent a config property of a CAS volume
+// NOTE: This is a copy from openebs/maya repo(https://github.com/openebs/maya/blob/095abe8803c0672485fedffdddcbda1c34efd446/pkg/apis/openebs.io/v1alpha1/cas_template.go#L67-L81). This is required to
+// avoid conflicts of client-go version when maya is imported
+type Config struct {
+	// Name of the config
+	Name string `json:"name"`
+	// Enabled flags if this config is enabled or disabled;
+	// true indicates enabled while false indicates disabled
+	Enabled string `json:"enabled"`
+	// Value represents any specific value that is applicable
+	// to this config
+	Value string `json:"value"`
+	// Data represents an arbitrary map of key value pairs
+	Data map[string]string `json:"data"`
+}
+
 // KubeClient interface for k8s API
 type KubeClient struct {
 	kubernetes.Interface

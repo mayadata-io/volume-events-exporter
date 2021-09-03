@@ -100,6 +100,7 @@ var _ = Describe("TEST NFS PVC CREATE WHEN VOLUME-EVENT-EXPORTER SIDE CAR IS NOT
 			var err error
 			var isEventReceived bool
 
+			Expect(backendPVCName).NotTo(BeEmpty(), "backend pvc name shouldn't be empty")
 			// Wait for few seconds to know status about events
 			for retries := 0; retries < maxRetryCount; retries++ {
 				backingPVCObj, err = Client.getPVC(OpenEBSNamespace, backendPVCName)
@@ -139,6 +140,9 @@ var _ = Describe("TEST NFS PVC CREATE WHEN VOLUME-EVENT-EXPORTER SIDE CAR IS NOT
 			var err error
 			var isEventReceived bool
 
+			Expect(nfsPVName).NotTo(BeEmpty(), "nfs pvc name shouldn't be empty")
+			Expect(backendPVCName).NotTo(BeEmpty(), "backend pvc name shouldn't be empty")
+			Expect(backendPVName).NotTo(BeEmpty(), "backend pv name shouldn't be empty")
 			for retries := 0; retries < maxRetryCount; retries++ {
 				backingPVCObj, err = Client.getPVC(OpenEBSNamespace, backendPVCName)
 				Expect(err).To(BeNil(), "while fetching backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
@@ -171,6 +175,9 @@ var _ = Describe("TEST NFS PVC CREATE WHEN VOLUME-EVENT-EXPORTER SIDE CAR IS NOT
 			var err error
 			var isEventReceived bool
 
+			Expect(nfsPVName).NotTo(BeEmpty(), "nfs pvc name shouldn't be empty")
+			Expect(backendPVCName).NotTo(BeEmpty(), "backend pvc name shouldn't be empty")
+			Expect(backendPVName).NotTo(BeEmpty(), "backend pv name shouldn't be empty")
 			for retry := 0; retry < maxRetryCount; retry++ {
 				backingPVCObj, err = Client.getPVC(OpenEBSNamespace, backendPVCName)
 				Expect(err).To(BeNil(), "while fetching backend pvc %s/%s", OpenEBSNamespace, backendPVCName)

@@ -10,7 +10,7 @@ To run the integrations test:
 - Integration test will spin up RPC server and will tear down server at end of the test. By default server will run on 9090 port and it can configured with option `--port`.
 - To run a specific test following command can be used:
   ```sh
-  ginkgo -v -focus="TEST NFS PVC CREATE & DELTE EVENTS" -- -address=172.18.0.1 -port=9091
+  ginkgo -v -focus="TEST NFS PVC CREATE & DELETE EVENTS" -- -address=172.18.0.1 -port=9091
   ```
   In above `-focus` can have test name
 
@@ -32,3 +32,4 @@ Available Integration Tests:
 | Create NFS PVC with invalid backend SC | <ul> <li> Verify that volume_event_controller **SHOULD NOT** send any create event data to configured server </li> </ui>| [nfs_pvc_invalid_backend_sc_test.go](./nfs_pvc_invalid_backend_sc_test.go) |
 | Delete NFS PVC with invalid backend SC | <ul> <li> Verify that volume_event_controller **SHOULD NOT** send any delete event data to configured server </li> </ui>| [nfs_pvc_invalid_backend_sc_test.go](./nfs_pvc_invalid_backend_sc_test.go) |
 | Disable sidecar and create PVC with reclaim policy Delete. Once the NFS PVC is bounded start sidecar  | <ul> <li> Verify whether volume_event_controller sent following volume_provisioned JSON data to configured server after enabiling volume_event_exporter <ul> <li> nfs_pvc </li> <li> nfs_pv </li> <li> backend_pvc </li> <li> backend_pv </li> along with creationTimestamp on `nfs_pv` </ul> </ul> </li>| [nfs_pvc_creation_scaling_down_sidecar_test.go](./nfs_pvc_creation_scaling_down_sidecar_test.go) |
+| Stop the volume-event-exporter sidecar and Create NFS PVC with ReclaimPolicy Retain. Once NFS PVC is bound, start the volume-event-exporter sidecar | <ul> Verify whether volume_event_controller sent volume_provisioned JSON data to configured server <li> nfs_pvc </li> <li> nfs_pv </li> <li> backend_pvc </li> <li> backend_pvc </li> along with creation timestamp on `nfs_pv` </ul> | [nfs_create_retain_pv_disable_exporter_test.go](./nfs_create_retain_pv_disable_exporter_test.go) |

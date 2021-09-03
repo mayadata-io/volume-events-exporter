@@ -29,7 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var _ = Describe("TEST NFS PVC CREATE & DELTE EVENTS", func() {
+var _ = Describe("TEST NFS PVC CREATE & DELETE EVENTS", func() {
 	var (
 		// PVC configuration
 		accessModes    = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}
@@ -72,7 +72,7 @@ var _ = Describe("TEST NFS PVC CREATE & DELTE EVENTS", func() {
 
 			// TODO: Remove below lines after merging https://github.com/openebs/dynamic-nfs-provisioner/pull/97 PR
 			err = markNFSResources(applicationNamespace, pvcName)
-			Expect(err).To(BeNil(), "while makrking for events")
+			Expect(err).To(BeNil(), "while marking for events")
 		})
 	})
 

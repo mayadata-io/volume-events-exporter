@@ -231,6 +231,7 @@ var _ = Describe("TEST NFS PVC CREATE AND DELETE WHEN VOLUME-EVENT-EXPORTER SIDE
 
 	When("test event finalizers are removed on resource", func() {
 		It("should get removed", func() {
+			Expect(backendPVCName).NotTo(BeEmpty(), "backend pvc name shouldn't be empty")
 			// Just wait for few seconds to avoid conflicts
 			time.Sleep(time.Second * 5)
 			// Remove test finalizer on Backend PVC
@@ -243,7 +244,9 @@ var _ = Describe("TEST NFS PVC CREATE AND DELETE WHEN VOLUME-EVENT-EXPORTER SIDE
 		})
 
 		It("should get deleted from cluster", func() {
-
+			Expect(nfsPVName).NotTo(BeEmpty(), "nfs pv name shouldn't be empty")
+			Expect(backendPVCName).NotTo(BeEmpty(), "backend pvc name shouldn't be empty")
+			Expect(backendPVName).NotTo(BeEmpty(), "backend pv name shouldn't be empty")
 			// Check NFS PV existence
 			var isNFSPVExist bool = true
 			for retry := 0; retry < maxRetryCount; retry++ {

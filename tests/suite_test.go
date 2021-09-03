@@ -52,6 +52,14 @@ var (
 	nfsProvisionerName          = "openebs-nfs-provisioner"
 	nfsProvisionerLabelSelector = "openebs.io/component-name=openebs-nfs-provisioner"
 	OpenEBSNamespace            = "openebs"
+
+	//KeyPVNFSServerType defines if the NFS PV should be launched
+	// using kernel or ganesha
+	KeyPVNFSServerType = "NFSServerType"
+
+	//KeyPVBackendStorageClass defines default provisioner to be used
+	// to create the data(export) directory for NFS server
+	KeyPVBackendStorageClass = "BackendStorageClass"
 )
 
 func TestSource(t *testing.T) {

@@ -243,7 +243,6 @@ var _ = Describe("TEST NFS PVC WITH RETAIN RECLAIM POLICY", func() {
 				// get reconcile easily
 				time.Sleep(time.Second * 10)
 			}
-
 			Expect(isEventReceived).To(BeTrue(), "NFS pv %s details are not exported to server for delete event", nfsPVName)
 			Expect(backendPVCObj.Annotations[nfs.VolumeDeleteNFSPVKey]).To(Equal(nfsPVName), "while verifying NFS pv delete event data")
 			Expect(backendPVCObj.Annotations[nfs.VolumeDeleteBackendPVCKey]).To(Equal(OpenEBSNamespace+"-"+backendPVCName), "while verifying backend pvc delete event data")

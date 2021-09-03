@@ -17,24 +17,24 @@ limitations under the License.
 package tests
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/mayadata-io/volume-events-exporter/tests/nfs"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var _ = Describe("TEST NFS PVC CREATE & DELETE EVENTS", func() {
+var _ = Describe("TEST NFS PVC CREATE AND DELETE WHEN VOLUME-EVENT-EXPORTER SIDE CAR IS NOT AVAILABLE", func() {
 	var (
 		// PVC configuration
 		accessModes    = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}
 		capacity       = "1Gi"
-		pvcName        = "sanity-event-nfs-pvc"
+		pvcName        = "disable-side-car-pvc-provision-deprovision"
 		scName         = "openebs-rwx"
 		nfsPVName      string
 		backendPVCName string
@@ -46,9 +46,16 @@ var _ = Describe("TEST NFS PVC CREATE & DELETE EVENTS", func() {
 		maxRetryCount = 15
 	)
 
+	When("volum-event-exporter side car is disabled", func() {
+		It("should disable side car", func() {
+			err := removeEventsCollectorSidecar(OpenEBSNamespace, nfsProvisionerName)
+			Expect(err).To(BeNil(), "while disabiling volume-event-sidecar in %s deployment", nfsProvisionerName)
+		})
+	})
+
 	When("pvc with storageclass openebs-rwx is created", func() {
 		It("should create a pvc ", func() {
-			By("creating above pvc")
+			By(fmt.Sprintf("creating pvc %s", pvcName))
 			err := Client.createPVC(&corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      pvcName,
@@ -72,7 +79,7 @@ var _ = Describe("TEST NFS PVC CREATE & DELETE EVENTS", func() {
 
 			// TODO: Remove below lines after merging https://github.com/openebs/dynamic-nfs-provisioner/pull/97 PR
 			err = markNFSResources(applicationNamespace, pvcName)
-			Expect(err).To(BeNil(), "while marking for events")
+			Expect(err).To(BeNil(), "while makrking for events")
 		})
 	})
 
@@ -89,32 +96,37 @@ var _ = Describe("TEST NFS PVC CREATE & DELETE EVENTS", func() {
 			Expect(err).To(BeNil(), "while verifying NFS Server running status")
 		})
 
-		It("should have sent details to server... verify annotation of backing PVC", func() {
+		It("should not send create events to metrics collector/exporter", func() {
 			var backingPVCObj *corev1.PersistentVolumeClaim
 			var err error
 			var isEventReceived bool
 
+			Expect(backendPVCName).NotTo(BeEmpty(), "backend pvc name shouldn't be empty")
+			// Wait for few seconds to know status about events
 			for retries := 0; retries < maxRetryCount; retries++ {
 				backingPVCObj, err = Client.getPVC(OpenEBSNamespace, backendPVCName)
 				Expect(err).To(BeNil(), "while fetching backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
 
-				_, isEventReceived = backingPVCObj.Annotations[nfs.VolumeCreateNFSPVCKey]
+				_, isEventReceived = backingPVCObj.Annotations[nfs.VolumeCreateNFSPVKey]
 				if isEventReceived {
 					break
 				}
-				// Reconciliation will happen at every 60 seconds but if any error occurs it will
-				// get reconcile easily
-				time.Sleep(time.Second * 10)
+				time.Sleep(time.Second * 5)
 			}
-			Expect(isEventReceived).To(BeTrue(), "NFS pvc %s/%s details are not exported to server", applicationNamespace, pvcName)
+			Expect(isEventReceived).To(BeFalse(), "NFS pv %s/%s details are exported to server... when volume-event-exporter is down", applicationNamespace, pvcName)
 			backendPVC, err := Client.getPVC(OpenEBSNamespace, backendPVCName)
 			Expect(err).To(BeNil(), "while fetching backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
 			backendPVName = backendPVC.Spec.VolumeName
 
-			Expect(backingPVCObj.Annotations[nfs.VolumeCreateNFSPVCKey]).To(Equal(applicationNamespace+"-"+pvcName), "while verifying nfs pvc create event data")
-			Expect(backingPVCObj.Annotations[nfs.VolumeCreateNFSPVKey]).To(Equal(nfsPVName), "while verifying nfs pv create event data")
-			Expect(backingPVCObj.Annotations[nfs.VolumeCreateBackendPVCKey]).To(Equal(OpenEBSNamespace+"-"+backendPVCName), "while verifying backend pvc create event data")
-			Expect(backingPVCObj.Annotations[nfs.VolumeCreateBackendPVKey]).To(Equal(backendPVName), "while verifying backend pv create event data")
+			_, isNFSPVCEventExist := backingPVCObj.Annotations[nfs.VolumeCreateNFSPVCKey]
+			_, isNFSPVEventExist := backingPVCObj.Annotations[nfs.VolumeCreateNFSPVKey]
+			_, isBackingPVCEventExist := backingPVCObj.Annotations[nfs.VolumeCreateBackendPVCKey]
+			_, isBackingPVEventExist := backingPVCObj.Annotations[nfs.VolumeCreateBackendPVKey]
+
+			Expect(isNFSPVCEventExist).To(BeFalse(), "nfs pvc create details are exported to server... when volume-event-exporter is down")
+			Expect(isNFSPVEventExist).To(BeFalse(), "nfs pv create details are exported to server... when volume-event-exporter is down")
+			Expect(isBackingPVCEventExist).To(BeFalse(), "backend pvc create details are exported to server... when volume-event-exporter is down")
+			Expect(isBackingPVEventExist).To(BeFalse(), "backend pv create details are exported to server... when volume-event-exporter is down")
 		})
 	})
 
@@ -124,11 +136,79 @@ var _ = Describe("TEST NFS PVC CREATE & DELETE EVENTS", func() {
 			Expect(err).To(BeNil(), "while deleting pvc %s/%s", applicationNamespace, pvcName)
 		})
 
-		It("should send events to server", func() {
+		It("should not send delete events to server... since exporter is down", func() {
 			var backingPVCObj *corev1.PersistentVolumeClaim
 			var err error
 			var isEventReceived bool
 
+			Expect(backendPVCName).NotTo(BeEmpty(), "backend pvc name shouldn't be empty")
+			for retry := 0; retry < maxRetryCount; retry++ {
+				backingPVCObj, err = Client.getPVC(OpenEBSNamespace, backendPVCName)
+				Expect(err).To(BeNil(), "while fetching backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
+
+				_, isEventReceived = backingPVCObj.Annotations[nfs.VolumeDeleteNFSPVKey]
+				if isEventReceived {
+					break
+				}
+				// Reconciliation will happen at every 60 seconds but if any error occurs it will
+				// get reconcile easily
+				time.Sleep(time.Second * 5)
+			}
+			Expect(isEventReceived).To(BeFalse(), "NFS pv %s details are exported to server for delete event... when volume-event-exporter is down", nfsPVName)
+
+			_, isNFSPVEventExist := backingPVCObj.Annotations[nfs.VolumeDeleteNFSPVKey]
+			_, isBackingPVCEventExist := backingPVCObj.Annotations[nfs.VolumeDeleteBackendPVCKey]
+			_, isBackingPVEventExist := backingPVCObj.Annotations[nfs.VolumeDeleteBackendPVKey]
+			Expect(isNFSPVEventExist).To(BeFalse(), "NFS pv delete event details are exported... when volume-event-exporter is down")
+			Expect(isBackingPVCEventExist).To(BeFalse(), "backend pvc details are exporterd... when volume-event-exporter is down")
+			Expect(isBackingPVEventExist).To(BeFalse(), "backend pv event details are exported... when volume-event-exporter is down")
+		})
+	})
+
+	When("volume-event-exporter side car is enabled", func() {
+		It("should have volume-event-exporter side car", func() {
+			err := addEventControllerSideCar(OpenEBSNamespace, nfsProvisionerName)
+			Expect(err).To(BeNil(), "while enabling volume-event-exporter sidecar in %s deployment", nfsProvisionerName)
+		})
+
+		It("should have sent create event details to server... verify annotations of backing PVC", func() {
+			var backingPVCObj *corev1.PersistentVolumeClaim
+			var err error
+			var isEventReceived bool
+
+			Expect(nfsPVName).NotTo(BeEmpty(), "nfs pv name shouldn't be empty")
+			Expect(backendPVCName).NotTo(BeEmpty(), "backend pvc name shouldn't be empty")
+			Expect(backendPVName).NotTo(BeEmpty(), "backend pv name shouldn't be empty")
+			for retries := 0; retries < maxRetryCount; retries++ {
+				backingPVCObj, err = Client.getPVC(OpenEBSNamespace, backendPVCName)
+				Expect(err).To(BeNil(), "while fetching backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
+
+				_, isEventReceived = backingPVCObj.Annotations[nfs.VolumeCreateNFSPVKey]
+				if isEventReceived {
+					break
+				}
+				// Reconciliation will happen at every 60 seconds but if any error occurs it will
+				// get reconcile easily
+				time.Sleep(time.Second * 10)
+			}
+			Expect(isEventReceived).To(BeTrue(), "NFS pv %s details are not exported to server", nfsPVName)
+
+			// Since we deleted NFS PVC it will not be exported to server
+			_, isNFSPVCEventExist := backingPVCObj.Annotations[nfs.VolumeCreateNFSPVCKey]
+			Expect(isNFSPVCEventExist).To(BeFalse(), "NFS pvc %s/%s shouldn't be exported to server", applicationNamespace, pvcName)
+			Expect(backingPVCObj.Annotations[nfs.VolumeCreateNFSPVKey]).To(Equal(nfsPVName), "while verifying nfs pv create event data")
+			Expect(backingPVCObj.Annotations[nfs.VolumeCreateBackendPVCKey]).To(Equal(OpenEBSNamespace+"-"+backendPVCName), "while verifying backend pvc create event data")
+			Expect(backingPVCObj.Annotations[nfs.VolumeCreateBackendPVKey]).To(Equal(backendPVName), "while verifying backend pv create event data")
+		})
+
+		It("should have sent delete event details to server... verify annotations of backing PVC", func() {
+			var backingPVCObj *corev1.PersistentVolumeClaim
+			var err error
+			var isEventReceived bool
+
+			Expect(nfsPVName).NotTo(BeEmpty(), "nfs pv name shouldn't be empty")
+			Expect(backendPVCName).NotTo(BeEmpty(), "backend pvc name shouldn't be empty")
+			Expect(backendPVName).NotTo(BeEmpty(), "backend pv name shouldn't be empty")
 			for retry := 0; retry < maxRetryCount; retry++ {
 				backingPVCObj, err = Client.getPVC(OpenEBSNamespace, backendPVCName)
 				Expect(err).To(BeNil(), "while fetching backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
@@ -145,11 +225,15 @@ var _ = Describe("TEST NFS PVC CREATE & DELETE EVENTS", func() {
 			Expect(backingPVCObj.Annotations[nfs.VolumeDeleteNFSPVKey]).To(Equal(nfsPVName), "while verifying NFS pv delete event data")
 			Expect(backingPVCObj.Annotations[nfs.VolumeDeleteBackendPVCKey]).To(Equal(OpenEBSNamespace+"-"+backendPVCName), "while verifying backend pvc delete event data")
 			Expect(backingPVCObj.Annotations[nfs.VolumeDeleteBackendPVKey]).To(Equal(backendPVName), "while verifying backend pv delete event data")
+
 		})
 	})
 
 	When("test event finalizers are removed on resource", func() {
 		It("should get removed", func() {
+			Expect(backendPVCName).NotTo(BeEmpty(), "backend pvc name shouldn't be empty")
+			// Just wait for few seconds to avoid conflicts
+			time.Sleep(time.Second * 5)
 			// Remove test finalizer on Backend PVC
 			backendPVC, err := Client.getPVC(OpenEBSNamespace, backendPVCName)
 			Expect(err).To(BeNil(), "while fetching backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
@@ -160,7 +244,9 @@ var _ = Describe("TEST NFS PVC CREATE & DELETE EVENTS", func() {
 		})
 
 		It("should get deleted from cluster", func() {
-
+			Expect(nfsPVName).NotTo(BeEmpty(), "nfs pv name shouldn't be empty")
+			Expect(backendPVCName).NotTo(BeEmpty(), "backend pvc name shouldn't be empty")
+			Expect(backendPVName).NotTo(BeEmpty(), "backend pv name shouldn't be empty")
 			// Check NFS PV existence
 			var isNFSPVExist bool = true
 			for retry := 0; retry < maxRetryCount; retry++ {
@@ -202,51 +288,3 @@ var _ = Describe("TEST NFS PVC CREATE & DELETE EVENTS", func() {
 		})
 	})
 })
-
-// This function can be removed once configmap support is merged for
-// configuring metadata on NFS provisioner owned resources
-func markNFSResources(nfsPVCNamespace, nfsPVCName string) error {
-	nfsEventFinalizer := "nfs.events.openebs.io/finalizer"
-	integrationTestFinalizer := "it.nfs.openebs.io/test-protection"
-	nfsPVC, err := Client.getPVC(nfsPVCNamespace, nfsPVCName)
-	if err != nil {
-		return errors.Wrapf(err, "failed to fetch PVC %s/%s", nfsPVCNamespace, nfsPVCName)
-	}
-
-	nfsPV, err := Client.getPV(nfsPVC.Spec.VolumeName)
-	if err != nil {
-		return errors.Wrapf(err, "failed to fetch NFS pv %s", nfsPVC.Spec.VolumeName)
-	}
-
-	backendPVCName := "nfs-" + nfsPVC.Spec.VolumeName
-	backendPVC, err := Client.getPVC(OpenEBSNamespace, backendPVCName)
-	if err != nil {
-		return errors.Wrapf(err, "failed to fetch backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
-	}
-	backendPVC.Finalizers = append(backendPVC.Finalizers, nfsEventFinalizer, integrationTestFinalizer)
-	_, err = Client.updatePVC(backendPVC)
-	if err != nil {
-		return errors.Wrapf(err, "while adding event finalzers on NFS pv %s", backendPVCName)
-	}
-
-	backendPV, err := Client.getPV(backendPVC.Spec.VolumeName)
-	if err != nil {
-		return errors.Wrapf(err, "failed to fetch backend pv %s", backendPVC.Spec.VolumeName)
-	}
-	backendPV.Finalizers = append(backendPV.Finalizers, nfsEventFinalizer)
-	_, err = Client.updatePV(backendPV)
-	if err != nil {
-		return errors.Wrapf(err, "while adding event finalizers on backend pv %s", backendPV.Name)
-	}
-
-	nfsPV.Finalizers = append(nfsPV.Finalizers, nfsEventFinalizer)
-	if nfsPV.Annotations == nil {
-		nfsPV.Annotations = map[string]string{}
-	}
-	nfsPV.Annotations["events.openebs.io/required"] = "true"
-	_, err = Client.updatePV(nfsPV)
-	if err != nil {
-		return errors.Wrapf(err, "while adding event finalizers on NFS pvc %s/%s", nfsPV.Namespace, nfsPV.Name)
-	}
-	return nil
-}

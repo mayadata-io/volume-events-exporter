@@ -1,4 +1,5 @@
 # QuickStart
+
 ## Prerequisites
 Before installing nfs-provisioner make sure your Kubernetes cluster meets the following prerequisites:
 
@@ -160,13 +161,13 @@ spec:
           value: "openebs"
         # CALLBACK_URL defines the server address to POST volume events information.
         # It must be a valid address
-        # NOTE: Update the below value
+        # NOTE: Update the below URL
         - name: CALLBACK_URL
           value: "http://127.0.0.1:9000/event-server"
         # CALLBACK_TOKEN defines the authentication token required to interact with server.
         # NOTE: Update the below token value
-        #- name: CALLBACK_TOKEN
-        #  value: ""
+        - name: CALLBACK_TOKEN
+          value: ""
         # RESYNC_INTERVAL defines how frequently controller has to look for volumes defaults
         # to 60 seconds. If activity of provisioning & de-provisioning is less then set it
         # to some higher value
@@ -181,26 +182,25 @@ metadata:
 data:
   config: |
     hooks:
-    - backendPV:
-        finalizers:
-        - nfs.events.openebs.io/finalizer
-      backendPVC:
-        finalizers:
-        - nfs.events.openebs.io/finalizer
-      nfsPV:
-        annotations:
-          events.openebs.io/required: "true"
-        finalizers:
-        - nfs.events.openebs.io/finalizer
-      eventType: CreateVolume
-      actionType: Add
-      name: createHook
+      addOrUpdateEntriesOnCreateVolumeEvent:
+        backendPV:
+          finalizers:
+          - nfs.events.openebs.io/finalizer
+        backendPVC:
+          finalizers:
+          - nfs.events.openebs.io/finalizer
+        nfsPV:
+          annotations:
+            events.openebs.io/required: "true"
+          finalizers:
+          - nfs.events.openebs.io/finalizer
+        name: createHook
     version: 1.0.0
 ```
 
 - Apply above yaml via kubectl `kubectl apply -f <above.yaml>`
 
-Above command will help to install NFS Provisioner along with volume-event-exporter(as a sidecar) to export volume events to external service. Service location can be configured via `CALLBACK_URL` env and token(if applicable, for authentication) via `CALLBACK_TOKEN`.
+Above command will install NFS Provisioner along with volume-event-exporter(as a sidecar) to export volume events to external service. Service location can be configured by updating values of `CALLBACK_URL` env and token(if applicable, for authentication) via `CALLBACK_TOKEN`.
 
 
 ## Provision NFS Volume
@@ -224,7 +224,7 @@ provisioner: openebs.io/nfsrwx
 reclaimPolicy: Delete
 ```
 
-Above storageclass is using *openebs-hostpath* Storageclass as BackendStorageclass. You can change it to as required.
+Above storageclass is using *openebs-hostpath* Storageclass as BackendStorageclass. Please update with relavent backend storageclass.
 
 Once the Storageclass is successfully created, you can provision a volume by creating a PVC with the above storageclass. Sample PVC YAML is as below:
 
@@ -236,7 +236,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteMany
-  storageClassName: "openebs-rwx"
+  storageClassName: "openebs-volume-event-rwx"
   resources:
     requests:
       storage: 1Gi

@@ -146,10 +146,13 @@ volume-events-exporter-image: volume-events-exporter-bin
 ##          https://golangci-lint.run/usage/install/#install-from-source
 ##
 ## Install golangci-lint only if tool doesn't exist in system
+## Fetch hook_types from openebs/dynamic-nfs-provisioner
 .PHONY: bootstrap
 bootstrap:
 	@echo "Install golangci-lint tool"
 	$(if $(shell which golangci-lint), @echo "golangci-lint already exist in system", (curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sudo sh -s -- -b "${GOPATH}/bin" v1.40.1))
+	wget https://raw.githubusercontent.com/openebs/dynamic-nfs-provisioner/HEAD/pkg/hook/types.go -O tests/hook_types.go
+	sed -i 's/package hook/package tests/g' tests/hook_types.go
 
 ## Currently we are running with Default options + other options
 ## Explanation for explicitly mentioned linters:
@@ -188,8 +191,6 @@ license-check:
 .PHONY: sanity-test
 sanity-test: sanity-test
 	@echo "--> Running sanity test";
-	wget https://raw.githubusercontent.com/openebs/dynamic-nfs-provisioner/HEAD/pkg/hook/types.go -O tests/hook_types.go
-	sed -i 's/package hook/package tests/g' tests/hook_types.go
 	go test -v -timeout 40m ./tests/...
 
 .PHONY: clean

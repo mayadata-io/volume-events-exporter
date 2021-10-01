@@ -45,9 +45,6 @@ var _ = Describe("TEST NFS PVC WITH INVALID BACKEND STORAGECLASS", func() {
 		scName         = "openebs-rwx-invalid-backend-sc"
 		backendPVCName string
 
-		// backend pvc configuration
-		integrationTestFinalizer = "it.nfs.openebs.io/test-protection"
-
 		maxRetryCount = 15
 	)
 
@@ -210,11 +207,14 @@ var _ = Describe("TEST NFS PVC WITH INVALID BACKEND STORAGECLASS", func() {
 			backendPVCObj, err := Client.getPVC(OpenEBSNamespace, backendPVCName)
 			Expect(err).To(BeNil(), "while fetching backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
 
+			var finalizers []string
 			for index := range backendPVCObj.Finalizers {
-				if backendPVCObj.Finalizers[index] == integrationTestFinalizer {
-					backendPVCObj.Finalizers = append(backendPVCObj.Finalizers[:index], backendPVCObj.Finalizers[index+1:]...)
+				if backendPVCObj.Finalizers[index] != integrationTestFinalizer {
+					finalizers = append(finalizers, backendPVCObj.Finalizers[index])
 				}
 			}
+			backendPVCObj.Finalizers = finalizers
+
 			_, err = Client.updatePVC(backendPVCObj)
 			Expect(err).To(BeNil(), "while removing %s finlaizer to pvc %s/%s", integrationTestFinalizer, OpenEBSNamespace, backendPVCName)
 		})

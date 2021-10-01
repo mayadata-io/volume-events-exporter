@@ -105,10 +105,6 @@ var _ = Describe("TEST DELETE EVENTS FOR RELEASED NFS PV WHILE EXPORTER IS DISAB
 			Expect(err).To(BeNil(), "while waiting for pvc %s/%s bound phase", applicationNamespace, pvcName)
 			Expect(pvcPhase).To(Equal(corev1.ClaimBound), "pvc %s/%s should be in bound phase", applicationNamespace, pvcName)
 
-			// TODO: Remove below lines after merging https://github.com/openebs/dynamic-nfs-provisioner/pull/97 PR
-			err = markNFSResources(applicationNamespace, pvcName)
-			Expect(err).To(BeNil(), "while marking for events")
-
 			pvcObj, err := Client.getPVC(applicationNamespace, pvcName)
 			Expect(err).To(BeNil(), "while fetching pvc %s/%s", applicationNamespace, pvcName)
 			nfsPVName = pvcObj.Spec.VolumeName

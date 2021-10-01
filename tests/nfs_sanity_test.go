@@ -22,7 +22,6 @@ import (
 	"github.com/mayadata-io/volume-events-exporter/tests/nfs"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -39,9 +38,6 @@ var _ = Describe("TEST NFS PVC CREATE & DELETE EVENTS", func() {
 		nfsPVName      string
 		backendPVCName string
 		backendPVName  string
-
-		// backend pvc configuration
-		integrationTestFinalizer = "it.nfs.openebs.io/test-protection"
 
 		maxRetryCount = 15
 	)
@@ -69,10 +65,6 @@ var _ = Describe("TEST NFS PVC CREATE & DELETE EVENTS", func() {
 			pvcPhase, err := Client.waitForPVCBound(applicationNamespace, pvcName)
 			Expect(err).To(BeNil(), "while waiting for pvc %s/%s bound phase", applicationNamespace, pvcName)
 			Expect(pvcPhase).To(Equal(corev1.ClaimBound), "pvc %s/%s should be in bound phase", applicationNamespace, pvcName)
-
-			// TODO: Remove below lines after merging https://github.com/openebs/dynamic-nfs-provisioner/pull/97 PR
-			err = markNFSResources(applicationNamespace, pvcName)
-			Expect(err).To(BeNil(), "while marking for events")
 		})
 	})
 
@@ -202,51 +194,3 @@ var _ = Describe("TEST NFS PVC CREATE & DELETE EVENTS", func() {
 		})
 	})
 })
-
-// This function can be removed once configmap support is merged for
-// configuring metadata on NFS provisioner owned resources
-func markNFSResources(nfsPVCNamespace, nfsPVCName string) error {
-	nfsEventFinalizer := "nfs.events.openebs.io/finalizer"
-	integrationTestFinalizer := "it.nfs.openebs.io/test-protection"
-	nfsPVC, err := Client.getPVC(nfsPVCNamespace, nfsPVCName)
-	if err != nil {
-		return errors.Wrapf(err, "failed to fetch PVC %s/%s", nfsPVCNamespace, nfsPVCName)
-	}
-
-	nfsPV, err := Client.getPV(nfsPVC.Spec.VolumeName)
-	if err != nil {
-		return errors.Wrapf(err, "failed to fetch NFS pv %s", nfsPVC.Spec.VolumeName)
-	}
-
-	backendPVCName := "nfs-" + nfsPVC.Spec.VolumeName
-	backendPVC, err := Client.getPVC(OpenEBSNamespace, backendPVCName)
-	if err != nil {
-		return errors.Wrapf(err, "failed to fetch backend pvc %s/%s", OpenEBSNamespace, backendPVCName)
-	}
-	backendPVC.Finalizers = append(backendPVC.Finalizers, nfsEventFinalizer, integrationTestFinalizer)
-	_, err = Client.updatePVC(backendPVC)
-	if err != nil {
-		return errors.Wrapf(err, "while adding event finalzers on NFS pv %s", backendPVCName)
-	}
-
-	backendPV, err := Client.getPV(backendPVC.Spec.VolumeName)
-	if err != nil {
-		return errors.Wrapf(err, "failed to fetch backend pv %s", backendPVC.Spec.VolumeName)
-	}
-	backendPV.Finalizers = append(backendPV.Finalizers, nfsEventFinalizer)
-	_, err = Client.updatePV(backendPV)
-	if err != nil {
-		return errors.Wrapf(err, "while adding event finalizers on backend pv %s", backendPV.Name)
-	}
-
-	nfsPV.Finalizers = append(nfsPV.Finalizers, nfsEventFinalizer)
-	if nfsPV.Annotations == nil {
-		nfsPV.Annotations = map[string]string{}
-	}
-	nfsPV.Annotations["events.openebs.io/required"] = "true"
-	_, err = Client.updatePV(nfsPV)
-	if err != nil {
-		return errors.Wrapf(err, "while adding event finalizers on NFS pvc %s/%s", nfsPV.Namespace, nfsPV.Name)
-	}
-	return nil
-}

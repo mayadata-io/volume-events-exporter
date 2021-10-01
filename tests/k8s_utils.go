@@ -224,6 +224,14 @@ func (k *KubeClient) destroyNamespace(namespace string) error {
 	return nil
 }
 
+func (k *KubeClient) getConfigMap(configNamespace, configName string) (*corev1.ConfigMap, error) {
+	return k.CoreV1().ConfigMaps(configNamespace).Get(context.TODO(), configName, metav1.GetOptions{})
+}
+
+func (k *KubeClient) updateConfigMap(config *corev1.ConfigMap) (*corev1.ConfigMap, error) {
+	return k.CoreV1().ConfigMaps(config.Namespace).Update(context.TODO(), config, metav1.UpdateOptions{})
+}
+
 func (k *KubeClient) waitForPVCBound(ns, pvcName string) (corev1.PersistentVolumeClaimPhase, error) {
 	for {
 		o, err := k.CoreV1().

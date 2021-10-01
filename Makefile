@@ -188,6 +188,8 @@ license-check:
 .PHONY: sanity-test
 sanity-test: sanity-test
 	@echo "--> Running sanity test";
+	wget https://raw.githubusercontent.com/openebs/dynamic-nfs-provisioner/HEAD/pkg/hook/types.go -O tests/hook_types.go
+	sed -i 's/package hook/package tests/g' tests/hook_types.go
 	go test -v -timeout 40m ./tests/...
 
 .PHONY: clean

@@ -1,6 +1,56 @@
-# This manifest deploys the OpenEBS control plane components, with associated CRs & RBAC rules
-# NOTE: On GKE, deploy the openebs-operator.yaml in admin context
+# QuickStart
 
+## Prerequisites
+Before installing nfs-provisioner along with volume-event-exporter make sure your Kubernetes cluster meets the following prerequisites:
+
+1. Kubernetes version >= 1.18
+2. NFS Client is installed on all nodes that will run a pod that mounts an `openebs-rwx` volume.
+   Here's how to prepare an NFS client on some common Operating Systems:
+
+   | OPERATING SYSTEM |  How to install NFS Client package                                |
+   | ---------------- | -------------------------------------------------------- |
+   | RHEL/CentOS/Fedora  |run *sudo yum install nfs-utils -y*      |
+   | Ubuntu/Debian   |run *sudo apt install nfs-common -y*     |
+   | MacOS     |Should work out of the box |
+
+## Install
+
+### Install NFS Provisioner with volume-event-exporter through kubectl
+
+To install NFS Provisioner along with volume-event-exporter, apply below template along with nfs-provisioner
+```yaml
+...
+...
+...
+      - name: volume-events-collector
+        imagePullPolicy: IfNotPresent
+        image: mayadataio/volume-events-exporter:ci
+        args:
+          - "--leader-election=false"
+          - "--generate-k8s-events=true"
+        env:
+        # OPENEBS_IO_NFS_SERVER_NS defines the namespace of nfs-server deployment
+        - name: OPENEBS_IO_NFS_SERVER_NS
+          value: "openebs"
+        # CALLBACK_URL defines the server address to POST volume events information.
+        # It must be a valid address
+        # NOTE: Update the below URL
+        - name: CALLBACK_URL
+          value: "http://127.0.0.1:9000/event-server"
+        # CALLBACK_TOKEN defines the authentication token required to interact with server.
+        # NOTE: Update the below token value
+        - name: CALLBACK_TOKEN
+          value: ""
+        # RESYNC_INTERVAL defines how frequently controller has to look for volumes defaults
+        # to 60 seconds. If activity of provisioning & de-provisioning is less then set it
+        # to some higher value
+        #- name: RESYNC_INTERVAL
+        #  value: "120"
+```
+<details>
+<summary>Click here for entire configuration YAML</summary>
+
+```yaml
 # Create the OpenEBS namespace
 apiVersion: v1
 kind: Namespace
@@ -41,9 +91,6 @@ rules:
 - apiGroups: ["apiextensions.k8s.io"]
   resources: ["customresourcedefinitions"]
   verbs: [ "get", "list", "create", "update", "delete", "patch"]
-- apiGroups: ["coordination.k8s.io"]
-  resources: ["leases"]
-  verbs: ["*"]
 - apiGroups: ["openebs.io"]
   resources: [ "*"]
   verbs: ["*"]
@@ -65,6 +112,8 @@ roleRef:
   name: openebs-maya-operator
   apiGroup: rbac.authorization.k8s.io
 ---
+# Create openebs-nfs-provisioner deployment to provision
+# dynamic NFS volumes
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -95,26 +144,6 @@ spec:
         imagePullPolicy: IfNotPresent
         image: openebs/provisioner-nfs:ci
         env:
-        #   OPENEBS_IO_K8S_MASTER enables openebs provisioner to connect to K8s
-        #   based on this address. This is ignored if empty.
-        #   This is supported for openebs provisioner version 0.5.2 onwards
-        # - name: OPENEBS_IO_K8S_MASTER
-        #   value: "http://10.128.0.12:8080"
-        #   OPENEBS_IO_KUBE_CONFIG enables openebs provisioner to connect to K8s
-        #   based on this config. This is ignored if empty.
-        #   This is supported for openebs provisioner version 0.5.2 onwards
-        # - name: OPENEBS_IO_KUBE_CONFIG
-        #   value: "/home/ubuntu/.kube/config"
-        #   OPENEBS_IO_NFS_SERVER_NODE_AFFINITY defines the node affinity rules to place NFS Server
-        #   instance. It accepts affinity rules in multiple ways:
-        #   - If NFS Server needs to be placed on storage nodes as well as only in
-        #     zone-1 & zone-2 then value can be:
-        #     value:  "kubernetes.io/zone:[zone-1,zone-2],kubernetes.io/storage-node".
-        #   - If NFS Server needs to be placed only on storage nodes & nfs nodes then
-        #     value can be:
-        #     value:  "kubernetes.io/storage-node,kubernetes.io/nfs-node"
-        # - name: OPENEBS_IO_NFS_SERVER_NODE_AFFINITY
-        #   value: "kubernetes.io/storage-node,kubernetes.io/nfs-node"
         - name: NODE_NAME
           valueFrom:
             fieldRef:
@@ -135,29 +164,15 @@ spec:
           value: "true"
         - name: OPENEBS_IO_INSTALLER_TYPE
           value: "openebs-operator-nfs"
+        - name: OPENEBS_IO_NFS_HOOK_CONFIGMAP
+          value: "hook-config"
         # OPENEBS_IO_NFS_SERVER_NS defines the namespace for nfs-server deployment
-        #- name: OPENEBS_IO_NFS_SERVER_NS
-        #  value: "openebs"
+        - name: OPENEBS_IO_NFS_SERVER_NS
+          value: "openebs"
         # OPENEBS_IO_NFS_SERVER_IMG defines the nfs-server-alpine image name to be used
         # while creating nfs volume
         - name: OPENEBS_IO_NFS_SERVER_IMG
           value: openebs/nfs-server-alpine:ci
-        # OPENEBS_IO_NFS_HOOK_CONFIGMAP defines configmap to use for hook
-        - name: OPENEBS_IO_NFS_HOOK_CONFIGMAP
-          value: "hook-config"
-        # LEADER_ELECTION_ENABLED is used to enable/disable leader election. By default
-        # leader election is enabled.
-        #- name: LEADER_ELECTION_ENABLED
-        #  value: "true"
-        # Set Timeout for backend PVC to bound, Default value is 60 seconds
-        #- name: OPENEBS_IO_NFS_SERVER_BACKEND_PVC_TIMEOUT
-        #  value: "60"
-        # Process name used for matching is limited to the 15 characters
-        # present in the pgrep output.
-        # So fullname can't be used here with pgrep (>15 chars).A regular expression
-        # that matches the entire command name has to specified.
-        # Anchor `^` : matches any string that starts with `provisioner-nfs`
-        # `.*`: matches any string that has `provisioner-loc` followed by zero or more char
         livenessProbe:
           exec:
             command:
@@ -174,26 +189,23 @@ spec:
           - "--generate-k8s-events=true"
         env:
         # OPENEBS_IO_NFS_SERVER_NS defines the namespace of nfs-server deployment
-        #- name: OPENEBS_IO_NFS_SERVER_NS
-        #  value: "openebs"
+        - name: OPENEBS_IO_NFS_SERVER_NS
+          value: "openebs"
         # CALLBACK_URL defines the server address to POST volume events information.
         # It must be a valid address
-        #- name: CALLBACK_URL
-        #  value: "http://173.168.20.5:9000/event-server"
+        # NOTE: Update the below URL
+        - name: CALLBACK_URL
+          value: "http://127.0.0.1:9000/event-server"
         # CALLBACK_TOKEN defines the authentication token required to interact with server.
-        #- name: CALLBACK_TOKEN
-        #  value: "eyJhbGciOiJIUzI1NiIsI"
+        # NOTE: Update the below token value
+        - name: CALLBACK_TOKEN
+          value: ""
         # RESYNC_INTERVAL defines how frequently controller has to look for volumes defaults
         # to 60 seconds. If activity of provisioning & de-provisioning is less then set it
         # to some higher value
         #- name: RESYNC_INTERVAL
         #  value: "120"
 ---
-## hook-config.data.config is used to tag volumes
-## provisioned by NFS provisioner. Volume-event-exporter
-## will reconcile tagged volume and export information to
-## configured server. Once information is exported finalizers
-## on resources will be removed by volume-event-exporter
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -216,30 +228,91 @@ data:
           - nfs.events.openebs.io/finalizer
         name: createHook
     version: 1.0.0
----
-#Sample storage classes for OpenEBS Local PV
+
+```
+</details>
+
+- Apply above yaml via kubectl `kubectl apply -f <above.yaml>`
+
+Above command will install NFS Provisioner along with volume-event-exporter(as a sidecar) to export volume events to external service. Service location can be configured by updating values of `CALLBACK_URL` env and token(if applicable, for authentication) via `CALLBACK_TOKEN`.
+
+
+## Provision NFS Volume
+
+To provision NFS volume, create an NFS StorageClass with the required backend StorageClass. Example StorageClass YAML is:
+
+```yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: openebs-rwx
+  name: openebs-volume-event-rwx
   annotations:
     openebs.io/cas-type: nfsrwx
     cas.openebs.io/config: |
       - name: NFSServerType
         value: "kernel"
+      # Replace `openebs-hostpath` with corresponding backend StorageClass
       - name: BackendStorageClass
         value: "openebs-hostpath"
-      #  LeaseTime defines the renewl period(in seconds) for client state
-      #- name: LeaseTime
-      #  value: 30
-      #  GraceTime defines the recovery period(in seconds) to reclaim locks
-      #- name: GraceTime
-      #  value: 30
-      #  FSGID defines the group permissions of NFS Volume. If it is set
-      #  then non-root applications should add FSGID value under pod
-      #  Suplemental groups
-      #- name: FSGID
-      #  value: "120"
 provisioner: openebs.io/nfsrwx
 reclaimPolicy: Delete
----
+```
+
+Above storageclass is using *openebs-hostpath* Storageclass as BackendStorageclass. Please update with relavent backend storageclass.
+
+Once the Storageclass is successfully created, you can provision a volume by creating a PVC with the above storageclass. Sample PVC YAML is as below:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: "openebs-volume-event-rwx"
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+To check the binding of PVC, run below command:
+```sh
+kubectl get pvc <PVC-NAME> -n <PVC-NAMESPACE>
+```
+
+Below is the sample output:
+```sh
+NAME      STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+nfs-pvc   Bound    pvc-5dc44d4f-3141-40dd-85df-fa6544644f49   1Gi        RWX            openebs-rwx    17s
+```
+
+In above example, provisioner has created NFS PV named *pvc-b5d6caae-831c-4a4e-97d8-ddfe3ca9a646*.
+
+To verify whether volume-event-exporter exported create volume information, check the events of NFS pv
+```sh
+kubectl describe <PV-NAME>
+
+Events:
+Type    Reason            Age    From                      Message
+----    ------            ----   ----                      -------
+Normal  EventInformation  2m20s  volume-events-controller  Exported volume create information
+```
+
+## Delete NFS Volume
+
+Since NFS PV is dynamically provisioned, you can delete NFS PV by deleting PVC.
+
+- To delete created PVC [Provision NFS Volume](#provision-nfs-volume)
+  ```sh
+  kubectl delete pvc <PVC-NAME> -n <PVC-NAMESPACE>
+
+  persistentvolumeclaim "nfs-pvc" deleted
+  ```
+
+- To verify whether volume-event-exporter exported delete volume information, check the events of NFS pv
+  ```sh
+  kubectl get events
+  LAST SEEN   TYPE     REASON                    OBJECT                                                      MESSAGE
+  2s          Normal   EventInformation          persistentvolume/pvc-5dc44d4f-3141-40dd-85df-fa6544644f49   Exported volume delete information
+  ```

@@ -1,9 +1,9 @@
 # QuickStart
 
 ## Prerequisites
-Before installing nfs-provisioner make sure your Kubernetes cluster meets the following prerequisites:
+Before installing nfs-provisioner along with volume-event-exporter make sure your Kubernetes cluster meets the following prerequisites:
 
-1. Kubernetes version 1.18
+1. Kubernetes version >= 1.18
 2. NFS Client is installed on all nodes that will run a pod that mounts an `openebs-rwx` volume.
    Here's how to prepare an NFS client on some common Operating Systems:
 
@@ -15,9 +15,41 @@ Before installing nfs-provisioner make sure your Kubernetes cluster meets the fo
 
 ## Install
 
-### Install NFS Provisioner through kubectl
+### Install NFS Provisioner with volume-event-exporter through kubectl
 
-To install NFS Provisioner along with volume-event-exporter, apply below yaml
+To install NFS Provisioner along with volume-event-exporter, apply below template along with nfs-provisioner
+```yaml
+...
+...
+...
+      - name: volume-events-collector
+        imagePullPolicy: IfNotPresent
+        image: mayadataio/volume-events-exporter:ci
+        args:
+          - "--leader-election=false"
+          - "--generate-k8s-events=true"
+        env:
+        # OPENEBS_IO_NFS_SERVER_NS defines the namespace of nfs-server deployment
+        - name: OPENEBS_IO_NFS_SERVER_NS
+          value: "openebs"
+        # CALLBACK_URL defines the server address to POST volume events information.
+        # It must be a valid address
+        # NOTE: Update the below URL
+        - name: CALLBACK_URL
+          value: "http://127.0.0.1:9000/event-server"
+        # CALLBACK_TOKEN defines the authentication token required to interact with server.
+        # NOTE: Update the below token value
+        - name: CALLBACK_TOKEN
+          value: ""
+        # RESYNC_INTERVAL defines how frequently controller has to look for volumes defaults
+        # to 60 seconds. If activity of provisioning & de-provisioning is less then set it
+        # to some higher value
+        #- name: RESYNC_INTERVAL
+        #  value: "120"
+```
+<details>
+<summary>Click here for entire configuration YAML</summary>
+
 ```yaml
 # Create the OpenEBS namespace
 apiVersion: v1
@@ -196,7 +228,9 @@ data:
           - nfs.events.openebs.io/finalizer
         name: createHook
     version: 1.0.0
+
 ```
+</details>
 
 - Apply above yaml via kubectl `kubectl apply -f <above.yaml>`
 

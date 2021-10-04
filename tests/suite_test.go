@@ -25,6 +25,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/ghodss/yaml"
 	"github.com/mayadata-io/volume-events-exporter/tests/nfs"
 	"github.com/mayadata-io/volume-events-exporter/tests/server"
 	"github.com/mayadata-io/volume-events-exporter/tests/server/rest"
@@ -52,6 +53,7 @@ var (
 	nfsProvisionerName          = "openebs-nfs-provisioner"
 	nfsProvisionerLabelSelector = "openebs.io/component-name=openebs-nfs-provisioner"
 	OpenEBSNamespace            = "openebs"
+	nfsHookConfigName           = "hook-config"
 
 	//KeyPVNFSServerType defines if the NFS PV should be launched
 	// using kernel or ganesha
@@ -60,6 +62,15 @@ var (
 	//KeyPVBackendStorageClass defines default provisioner to be used
 	// to create the data(export) directory for NFS server
 	KeyPVBackendStorageClass = "BackendStorageClass"
+
+	// integrationTestFinalizer will be configured only on backend PVC.
+	// This finalizer is required for test to ensure whether volume events
+	// (create/delete) are exported to server, once the server receives a volume
+	// event will add received `metadata.name` as an annotation on backend PVC,
+	// Since the finalizer exist test will be able to verify annotations
+	// of occurred events and if everything is good, test will remove finalizer
+	// manually
+	integrationTestFinalizer = "it.nfs.openebs.io/test-protection"
 )
 
 func TestSource(t *testing.T) {
@@ -96,6 +107,9 @@ var _ = BeforeSuite(func() {
 	By("waiting for openebs-nfs-provisioner pod to come into running state")
 	err = Client.waitForPods(OpenEBSNamespace, nfsProvisionerLabelSelector, corev1.PodRunning, 1)
 	Expect(err).To(BeNil(), "while waiting for nfs deployment to be ready")
+
+	err = updateNFSHookConfig(OpenEBSNamespace, nfsHookConfigName)
+	Expect(err).To(BeNil(), "while updating nfs hook configuration as required per test")
 
 	err = addEventControllerSideCar(OpenEBSNamespace, nfsProvisionerName)
 	Expect(err).To(BeNil(), "while adding volume-event-exporter sidecar")
@@ -209,6 +223,40 @@ func removeEventsCollectorSidecar(deploymentNamespace, deploymentName string) er
 		return err
 	}
 	return Client.waitForDeploymentRollout(updatedDeployObj.Namespace, updatedDeployObj.Name)
+}
+
+// updateNFSHookConfig will update the NFS hook configuration as
+// per test details
+func updateNFSHookConfig(namespace, name string) error {
+	hookConfigMap, err := Client.getConfigMap(namespace, name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get configmap %s/%s", namespace, name)
+	}
+	var hook Hook
+	hookData, isConfigExist := hookConfigMap.Data["config"]
+	if !isConfigExist {
+		return errors.Errorf("hook configmap=%s/%s doesn't have data field=%s", namespace, name, "config")
+	}
+
+	err = yaml.Unmarshal([]byte(hookData), &hook)
+	if err != nil {
+		return err
+	}
+	addHookConfig, isAddExist := hook.Config[ActionAddOnCreateVolumeEvent]
+	if !isAddExist {
+		return errors.Errorf("%s configuration doesn't exist in hook %s/%s", ActionAddOnCreateVolumeEvent, namespace, name)
+	}
+	addHookConfig.BackendPVCConfig.Finalizers = append(addHookConfig.BackendPVCConfig.Finalizers, integrationTestFinalizer)
+	hook.Config[ActionAddOnCreateVolumeEvent] = addHookConfig
+
+	updatedHookConfigInBytes, err := yaml.Marshal(hook)
+	if err != nil {
+		return err
+	}
+
+	hookConfigMap.Data["config"] = string(updatedHookConfigInBytes)
+	_, err = Client.updateConfigMap(hookConfigMap)
+	return err
 }
 
 // externalIP will fetch the IP from ifconfig

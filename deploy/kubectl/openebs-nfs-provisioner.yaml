@@ -142,6 +142,9 @@ spec:
         # while creating nfs volume
         - name: OPENEBS_IO_NFS_SERVER_IMG
           value: openebs/nfs-server-alpine:ci
+        # OPENEBS_IO_NFS_HOOK_CONFIGMAP defines configmap to use for hook
+        - name: OPENEBS_IO_NFS_HOOK_CONFIGMAP
+          value: "hook-config"
         # LEADER_ELECTION_ENABLED is used to enable/disable leader election. By default
         # leader election is enabled.
         #- name: LEADER_ELECTION_ENABLED
@@ -182,6 +185,34 @@ spec:
         # to some higher value
         #- name: RESYNC_INTERVAL
         #  value: "120"
+---
+## hook-config.data.config is used to tag volumes
+## provisioned by NFS provisioner. Volume-event-exporter
+## will reconcile tagged volume and export information to
+## configured server. Once information is exported finalizers
+## on resources will be removed by volume-event-exporter
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hook-config
+  namespace: openebs
+data:
+  config: |
+    hooks:
+      addOrUpdateEntriesOnCreateVolumeEvent:
+        backendPV:
+          finalizers:
+          - nfs.events.openebs.io/finalizer
+        backendPVC:
+          finalizers:
+          - nfs.events.openebs.io/finalizer
+        nfsPV:
+          annotations:
+            events.openebs.io/required: "true"
+          finalizers:
+          - nfs.events.openebs.io/finalizer
+        name: createHook
+    version: 1.0.0
 ---
 #Sample storage classes for OpenEBS Local PV
 apiVersion: storage.k8s.io/v1

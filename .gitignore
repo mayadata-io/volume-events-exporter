@@ -5,6 +5,10 @@
 *.so
 *.dylib
 
+# Ignore hook_types file which is downloaded from
+# https://raw.githubusercontent.com/openebs/dynamic-nfs-provisioner/HEAD/pkg/hook/types.go
+tests/hook_types.go
+
 # Test binary, built with `go test -c`
 *.test
 

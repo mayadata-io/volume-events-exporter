@@ -88,6 +88,9 @@ deps:
 	@go mod tidy
 	@echo "--> Veryfying submodules"
 	@go mod verify
+	@echo "--> Downloading hook definition for nfs-provisioner"
+	@wget -q https://raw.githubusercontent.com/openebs/dynamic-nfs-provisioner/HEAD/pkg/hook/types.go -O tests/hook_types.go
+	@sed -i 's/package hook/package tests/g' tests/hook_types.go
 
 .PHONY: verify-deps
 verify-deps: deps
@@ -105,7 +108,7 @@ test-coverage: format vet
 	$(PWD)/buildscripts/test.sh ${XC_ARCH}
 
 .PHONY: vet
-vet:
+vet: deps
 	@echo "--> Running go vet"
 	@go list ./... | grep -v "./vendor/*" | xargs go vet -composites
 
@@ -146,6 +149,7 @@ volume-events-exporter-image: volume-events-exporter-bin
 ##          https://golangci-lint.run/usage/install/#install-from-source
 ##
 ## Install golangci-lint only if tool doesn't exist in system
+## Fetch hook_types from openebs/dynamic-nfs-provisioner
 .PHONY: bootstrap
 bootstrap:
 	@echo "Install golangci-lint tool"
@@ -186,7 +190,7 @@ license-check:
 	@echo
 
 .PHONY: sanity-test
-sanity-test: sanity-test
+sanity-test: deps
 	@echo "--> Running sanity test";
 	go test -v -timeout 40m ./tests/...
 

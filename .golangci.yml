@@ -1,6 +1,7 @@
 run:
   skip-files:
     - "tests/k8s_utils.go"
+    - "tests/hook_types.go"
 linters-settings:
   revive:
     ignore-generated-header: true

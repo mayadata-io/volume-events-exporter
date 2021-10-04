@@ -46,9 +46,6 @@ var _ = Describe("TEST NFS PVC WITH RETAIN RECLAIM POLICY", func() {
 		backendPVCName string
 		backendPVName  string
 
-		// backend pvc configuration
-		integrationTestFinalizer = "it.nfs.openebs.io/test-protection"
-
 		maxRetryCount = 15
 	)
 
@@ -106,9 +103,6 @@ var _ = Describe("TEST NFS PVC WITH RETAIN RECLAIM POLICY", func() {
 			pvcPhase, err := Client.waitForPVCBound(applicationNamespace, pvcName)
 			Expect(err).To(BeNil(), "while waiting for pvc %s/%s bound phase", applicationNamespace, pvcName)
 			Expect(pvcPhase).To(Equal(corev1.ClaimBound), "pvc %s/%s should be in bound phase", applicationNamespace, pvcName)
-
-			err = markNFSResources(applicationNamespace, pvcName)
-			Expect(err).To(BeNil(), "while makrking for events")
 		})
 	})
 

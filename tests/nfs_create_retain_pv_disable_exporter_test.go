@@ -42,9 +42,6 @@ var _ = Describe("TEST RETAINED NFS PVC CREATE EVENTS WHILE EXPORTER IS DISABLED
 		backendPVCName       string
 		backendPVName        string
 
-		// backend pvc configuration
-		integrationTestFinalizer = "it.nfs.openebs.io/test-protection"
-
 		scNfsServerType = "kernel"
 
 		maxRetryCount = 15

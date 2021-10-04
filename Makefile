@@ -88,8 +88,9 @@ deps:
 	@go mod tidy
 	@echo "--> Veryfying submodules"
 	@go mod verify
-	wget https://raw.githubusercontent.com/openebs/dynamic-nfs-provisioner/HEAD/pkg/hook/types.go -O tests/hook_types.go
-	sed -i 's/package hook/package tests/g' tests/hook_types.go
+	@echo "--> Downloading hook definition for nfs-provisioner"
+	@wget -q https://raw.githubusercontent.com/openebs/dynamic-nfs-provisioner/HEAD/pkg/hook/types.go -O tests/hook_types.go
+	@sed -i 's/package hook/package tests/g' tests/hook_types.go
 
 .PHONY: verify-deps
 verify-deps: deps

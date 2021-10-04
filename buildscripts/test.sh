@@ -33,7 +33,6 @@ fi
 
 PACKAGES=$(go list ./... | grep -v '/vendor/\|/pkg/apis/\|/pkg/client/\|tests')
 for d in $PACKAGES; do
-    echo "Running for $d"
 	go test -coverprofile=profile.out -covermode=atomic "$d"
 	if [ -f profile.out ]; then
 		cat profile.out >> coverage.txt

@@ -63,7 +63,13 @@ var (
 	// to create the data(export) directory for NFS server
 	KeyPVBackendStorageClass = "BackendStorageClass"
 
-	// backend pvc configuration for integration test
+	// integrationTestFinalizer will be configured only on backend PVC.
+	// This finalizer is required for test to ensure whether volume events
+	// (create/delete) are exported to server, once the server receives a volume
+	// event will add received `metadata.name` as an annotation on backend PVC,
+	// Since the finalizer exist test will be able to verify annotations
+	// of occurred events and if everything is good, test will remove finalizer
+	// manually
 	integrationTestFinalizer = "it.nfs.openebs.io/test-protection"
 )
 

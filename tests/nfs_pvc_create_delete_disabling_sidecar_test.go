@@ -40,9 +40,6 @@ var _ = Describe("TEST NFS PVC CREATE AND DELETE WHEN VOLUME-EVENT-EXPORTER SIDE
 		backendPVCName string
 		backendPVName  string
 
-		// backend pvc configuration
-		integrationTestFinalizer = "it.nfs.openebs.io/test-protection"
-
 		maxRetryCount = 15
 	)
 

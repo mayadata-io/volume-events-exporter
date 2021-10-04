@@ -42,9 +42,6 @@ var _ = Describe("TEST DELETE EVENTS FOR RETAIN NFS PVC WHILE EXPORTER IS DISABL
 		backendPVCName       string
 		backendPVName        string
 
-		// backend pvc configuration
-		integrationTestFinalizer = "it.nfs.openebs.io/test-protection"
-
 		scNfsServerType = "kernel"
 
 		maxRetryCount = 15

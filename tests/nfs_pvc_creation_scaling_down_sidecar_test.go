@@ -39,9 +39,6 @@ var _ = Describe("TEST NFS PVC CREATE WHEN VOLUME-EVENT-EXPORTER SIDE CAR IS NOT
 		backendPVCName string
 		backendPVName  string
 
-		// backend pvc configuration
-		integrationTestFinalizer = "it.nfs.openebs.io/test-protection"
-
 		maxRetryCount = 15
 	)
 

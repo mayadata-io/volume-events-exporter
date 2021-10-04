@@ -46,9 +46,6 @@ var _ = Describe("TEST NFS PVC WITH RETAIN RECLAIM POLICY", func() {
 		backendPVCName string
 		backendPVName  string
 
-		// backend pvc configuration
-		integrationTestFinalizer = "it.nfs.openebs.io/test-protection"
-
 		maxRetryCount = 15
 	)
 

@@ -233,9 +233,9 @@ func updateNFSHookConfig(namespace, name string) error {
 		return errors.Wrapf(err, "failed to get configmap %s/%s", namespace, name)
 	}
 	var hook Hook
-	hookData, isConfigExist := hookConfigMap.Data["config"]
+	hookData, isConfigExist := hookConfigMap.Data[nfsHookConfigName]
 	if !isConfigExist {
-		return errors.Errorf("hook configmap=%s/%s doesn't have data field=%s", namespace, name, "config")
+		return errors.Errorf("hook configmap=%s/%s doesn't have data field=%s", namespace, name, nfsHookConfigName)
 	}
 
 	err = yaml.Unmarshal([]byte(hookData), &hook)
@@ -254,7 +254,7 @@ func updateNFSHookConfig(namespace, name string) error {
 		return err
 	}
 
-	hookConfigMap.Data["config"] = string(updatedHookConfigInBytes)
+	hookConfigMap.Data[nfsHookConfigName] = string(updatedHookConfigInBytes)
 	_, err = Client.updateConfigMap(hookConfigMap)
 	return err
 }

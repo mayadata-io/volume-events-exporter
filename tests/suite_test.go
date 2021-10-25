@@ -54,6 +54,7 @@ var (
 	nfsProvisionerLabelSelector = "openebs.io/component-name=openebs-nfs-provisioner"
 	OpenEBSNamespace            = "openebs"
 	nfsHookConfigName           = "hook-config"
+	nfsHookConfigDataKey        = "hook-config"
 
 	//KeyPVNFSServerType defines if the NFS PV should be launched
 	// using kernel or ganesha
@@ -233,9 +234,9 @@ func updateNFSHookConfig(namespace, name string) error {
 		return errors.Wrapf(err, "failed to get configmap %s/%s", namespace, name)
 	}
 	var hook Hook
-	hookData, isConfigExist := hookConfigMap.Data["config"]
+	hookData, isConfigExist := hookConfigMap.Data[nfsHookConfigDataKey]
 	if !isConfigExist {
-		return errors.Errorf("hook configmap=%s/%s doesn't have data field=%s", namespace, name, "config")
+		return errors.Errorf("hook configmap=%s/%s doesn't have data field=%s", namespace, name, nfsHookConfigDataKey)
 	}
 
 	err = yaml.Unmarshal([]byte(hookData), &hook)
@@ -254,7 +255,7 @@ func updateNFSHookConfig(namespace, name string) error {
 		return err
 	}
 
-	hookConfigMap.Data["config"] = string(updatedHookConfigInBytes)
+	hookConfigMap.Data[nfsHookConfigDataKey] = string(updatedHookConfigInBytes)
 	_, err = Client.updateConfigMap(hookConfigMap)
 	return err
 }

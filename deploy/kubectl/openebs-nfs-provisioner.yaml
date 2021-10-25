@@ -142,9 +142,6 @@ spec:
         # while creating nfs volume
         - name: OPENEBS_IO_NFS_SERVER_IMG
           value: openebs/nfs-server-alpine:ci
-        # OPENEBS_IO_NFS_HOOK_CONFIGMAP defines configmap to use for hook
-        - name: OPENEBS_IO_NFS_HOOK_CONFIGMAP
-          value: "hook-config"
         # LEADER_ELECTION_ENABLED is used to enable/disable leader election. By default
         # leader election is enabled.
         #- name: LEADER_ELECTION_ENABLED
@@ -166,6 +163,9 @@ spec:
             - test `pgrep "^provisioner-nfs.*"` = 1
           initialDelaySeconds: 30
           periodSeconds: 60
+        volumeMounts:
+          - mountPath: /etc/nfs-provisioner
+            name: hook-config
       - name: volume-events-collector
         imagePullPolicy: IfNotPresent
         image: mayadataio/volume-events-exporter:ci
@@ -188,6 +188,10 @@ spec:
         # to some higher value
         #- name: RESYNC_INTERVAL
         #  value: "120"
+      volumes:
+        - name: hook-config
+          configMap:
+            name: hook-config
 ---
 ## hook-config.data.config is used to tag volumes
 ## provisioned by NFS provisioner. Volume-event-exporter
@@ -200,7 +204,7 @@ metadata:
   name: hook-config
   namespace: openebs
 data:
-  config: |
+  hook-config: |
     hooks:
       addOrUpdateEntriesOnCreateVolumeEvent:
         backendPV:

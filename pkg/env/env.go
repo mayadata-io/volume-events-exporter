@@ -34,6 +34,9 @@ var (
 
 	// ServerCallBackToken defines the server authentication token
 	ServerCallBackAuthToken = "CALLBACK_TOKEN"
+
+	// SigningKeyPathKey defines the path to private key to sign data
+	SigningKeyPathKey = "SIGNING_KEY_PATH"
 )
 
 func GetNFSServerNamespace() string {
@@ -50,4 +53,8 @@ func GetCallBackServerURL() string {
 
 func GetCallBackServerAuthToken() string {
 	return strings.TrimSpace(os.Getenv(ServerCallBackAuthToken))
+}
+
+func GetSigningKeyPath() string {
+	return strings.TrimSpace(os.Getenv(SigningKeyPathKey))
 }

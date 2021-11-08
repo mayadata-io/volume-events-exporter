@@ -188,10 +188,21 @@ spec:
         # to some higher value
         #- name: RESYNC_INTERVAL
         #  value: "120"
+        #  SIGNING_KEY_PATH defines the private key path to PEM formated id_rsa inside the
+        #  volume_events_collector container
+        #- name: SIGNING_KEY_PATH
+        #  value: ""
+        # volumeMounts:
+        # - mountPath: /secret/id_rsa
+        #   name: signature
       volumes:
         - name: hook-config
           configMap:
             name: hook-config
+        # - name: signature
+        #   hostPath:
+        #     path: /path/to/secret/key/directory
+        #     type: File
 ---
 ## hook-config.data.config is used to tag volumes
 ## provisioned by NFS provisioner. Volume-event-exporter

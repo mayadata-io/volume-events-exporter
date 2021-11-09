@@ -18,13 +18,20 @@ package nfspv
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"reflect"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/mayadata-io/volume-events-exporter/pkg/collectorinterface"
+	"github.com/mayadata-io/volume-events-exporter/pkg/encrypt/empty"
+	rsawrapper "github.com/mayadata-io/volume-events-exporter/pkg/encrypt/rsa"
 	"github.com/mayadata-io/volume-events-exporter/pkg/helper"
+	"github.com/mayadata-io/volume-events-exporter/pkg/sign"
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
@@ -37,16 +44,31 @@ type fixture struct {
 	clientset   kubernetes.Interface
 	pvcInformer corev1informer.PersistentVolumeClaimInformer
 	pvInformer  corev1informer.PersistentVolumeInformer
+	signer      sign.Signer
+	unsigner    sign.Unsigner
+	// mismatchSigner will holds the private key which doesn't match to public key
+	mismatchSigner sign.Signer
 }
 
-func newFixture() *fixture {
+func newFixture() (*fixture, error) {
 	kubeClient := fake.NewSimpleClientset()
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, 5)
-	return &fixture{
-		clientset:   kubeClient,
-		pvcInformer: kubeInformerFactory.Core().V1().PersistentVolumeClaims(),
-		pvInformer:  kubeInformerFactory.Core().V1().PersistentVolumes(),
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, err
 	}
+	fakePrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to generate fake private key")
+	}
+	return &fixture{
+		clientset:      kubeClient,
+		pvcInformer:    kubeInformerFactory.Core().V1().PersistentVolumeClaims(),
+		pvInformer:     kubeInformerFactory.Core().V1().PersistentVolumes(),
+		signer:         &rsawrapper.PrivateKey{PrivateKey: privateKey},
+		unsigner:       &rsawrapper.PublicKey{PublicKey: &privateKey.PublicKey},
+		mismatchSigner: &rsawrapper.PrivateKey{PrivateKey: fakePrivateKey},
+	}, nil
 }
 
 func (f *fixture) createFakePVC(pvcObj *corev1.PersistentVolumeClaim) error {
@@ -103,8 +125,23 @@ func (f *fixture) preCreateResources(
 	return nil
 }
 
+func (f *fixture) verifySignature(obj interface{}, signature string) error {
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return err
+	}
+	sigInBytes, err := base64.StdEncoding.DecodeString(signature)
+	if err != nil {
+		return err
+	}
+	return f.unsigner.Unsign(data, sigInBytes)
+}
+
 func TestCollectCreateEvents(t *testing.T) {
-	f := newFixture()
+	f, err := newFixture()
+	if err != nil {
+		t.Fatalf("failed to get fixture error: %v", err)
+	}
 	tests := map[string]struct {
 		nfsPVC        *corev1.PersistentVolumeClaim
 		nfsPV         *corev1.PersistentVolume
@@ -112,6 +149,10 @@ func TestCollectCreateEvents(t *testing.T) {
 		backendPV     *corev1.PersistentVolume
 		dataType      collectorinterface.DataType
 		isErrExpected bool
+
+		signer           sign.Signer
+		unsigner         sign.Unsigner
+		isValidSignature bool
 	}{
 		"when all nfs volume resources exist in the system": {
 			nfsPVC: &corev1.PersistentVolumeClaim{
@@ -164,6 +205,7 @@ func TestCollectCreateEvents(t *testing.T) {
 				},
 			},
 			dataType: collectorinterface.JSONDataType,
+			signer:   &empty.PrivateKey{},
 		},
 		"when nfs pvc doesn't exist": {
 			nfsPV: &corev1.PersistentVolume{
@@ -208,6 +250,7 @@ func TestCollectCreateEvents(t *testing.T) {
 				},
 			},
 			dataType: collectorinterface.JSONDataType,
+			signer:   &empty.PrivateKey{},
 		},
 		"when backend PV doesn't exist": {
 			nfsPV: &corev1.PersistentVolume{
@@ -246,6 +289,117 @@ func TestCollectCreateEvents(t *testing.T) {
 			},
 			isErrExpected: true,
 			dataType:      collectorinterface.JSONDataType,
+			signer:        &empty.PrivateKey{},
+		},
+		"when all nfs volume resources exist in the system with valid signer": {
+			nfsPVC: &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "pvc4",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.Now(),
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					VolumeName: "pv4",
+				},
+			},
+			nfsPV: &corev1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "pv4",
+					CreationTimestamp: metav1.Now(),
+					Finalizers: []string{
+						"kubernetes.io/pv-protection",
+						"nfs.events.openebs.io/finalizer",
+					},
+				},
+				Spec: corev1.PersistentVolumeSpec{
+					ClaimRef: &corev1.ObjectReference{
+						Name:      "pvc4",
+						Namespace: "ns1",
+					},
+				},
+			},
+			backendPVC: &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "nfs-pv4",
+					Namespace:         "openebs",
+					CreationTimestamp: metav1.Now(),
+					Finalizers: []string{
+						"nfs.events.openebs.io/finalizer",
+					},
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					VolumeName: "backend-pv4",
+				},
+			},
+			backendPV: &corev1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "backend-pv4",
+					CreationTimestamp: metav1.Now(),
+					Finalizers: []string{
+						"kubernetes.io/pv-protection",
+						"nfs.events.openebs.io/finalizer",
+					},
+				},
+			},
+			dataType:         collectorinterface.JSONDataType,
+			signer:           f.signer,
+			unsigner:         f.unsigner,
+			isValidSignature: true,
+		},
+		"when all nfs volume resources exist in the system with different signer": {
+			nfsPVC: &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "pvc5",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.Now(),
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					VolumeName: "pv5",
+				},
+			},
+			nfsPV: &corev1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "pv5",
+					CreationTimestamp: metav1.Now(),
+					Finalizers: []string{
+						"kubernetes.io/pv-protection",
+						"nfs.events.openebs.io/finalizer",
+					},
+				},
+				Spec: corev1.PersistentVolumeSpec{
+					ClaimRef: &corev1.ObjectReference{
+						Name:      "pvc5",
+						Namespace: "ns1",
+					},
+				},
+			},
+			backendPVC: &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "nfs-pv5",
+					Namespace:         "openebs",
+					CreationTimestamp: metav1.Now(),
+					Finalizers: []string{
+						"nfs.events.openebs.io/finalizer",
+					},
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					VolumeName: "backend-pv5",
+				},
+			},
+			backendPV: &corev1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "backend-pv5",
+					CreationTimestamp: metav1.Now(),
+					Finalizers: []string{
+						"kubernetes.io/pv-protection",
+						"nfs.events.openebs.io/finalizer",
+					},
+				},
+			},
+			dataType:         collectorinterface.JSONDataType,
+			signer:           f.mismatchSigner,
+			unsigner:         f.unsigner,
+			isValidSignature: false,
 		},
 	}
 	for name, test := range tests {
@@ -264,6 +418,7 @@ func TestCollectCreateEvents(t *testing.T) {
 				nfsServerNamespace: "openebs",
 				annotationPrefix:   "nfs.",
 				dataType:           test.dataType,
+				signer:             test.signer,
 			}
 			str, err := nfsVolume.CollectCreateEvents()
 			if test.isErrExpected && err == nil {
@@ -291,20 +446,35 @@ func TestCollectCreateEvents(t *testing.T) {
 				if data.VolumeProvisioned.BackingPVC == nil {
 					t.Fatalf("%q test failed expected backend PV should exist", name)
 				}
+				if test.unsigner != nil {
+					err = f.verifySignature(data.VolumeProvisioned, data.Signature)
+					if test.isValidSignature && err != nil {
+						t.Fatalf("%q test failed expected valid signature but got error: %v", name, err)
+					}
+					if !test.isValidSignature && err == nil {
+						t.Fatalf("%q test failed mismatch of signatures", name)
+					}
+				}
 			}
 		})
 	}
 }
 
 func TestCollectDeleteEvents(t *testing.T) {
-	f := newFixture()
+	f, err := newFixture()
+	if err != nil {
+		t.Fatalf("failed to get fixture error: %v", err)
+	}
 	tests := map[string]struct {
-		nfsPVC        *corev1.PersistentVolumeClaim
-		nfsPV         *corev1.PersistentVolume
-		backendPVC    *corev1.PersistentVolumeClaim
-		backendPV     *corev1.PersistentVolume
-		dataType      collectorinterface.DataType
-		isErrExpected bool
+		nfsPVC           *corev1.PersistentVolumeClaim
+		nfsPV            *corev1.PersistentVolume
+		backendPVC       *corev1.PersistentVolumeClaim
+		backendPV        *corev1.PersistentVolume
+		dataType         collectorinterface.DataType
+		signer           sign.Signer
+		unsigner         sign.Unsigner
+		isValidSignature bool
+		isErrExpected    bool
 	}{
 		"when all nfs volume resources exist in the system with deletion timestamp": {
 			nfsPVC: &corev1.PersistentVolumeClaim{
@@ -360,6 +530,7 @@ func TestCollectDeleteEvents(t *testing.T) {
 				},
 			},
 			dataType: collectorinterface.JSONDataType,
+			signer:   &empty.PrivateKey{},
 		},
 		"when nfs pvc doesn't exist in cluster": {
 			nfsPV: &corev1.PersistentVolume{
@@ -404,6 +575,7 @@ func TestCollectDeleteEvents(t *testing.T) {
 				},
 			},
 			dataType: collectorinterface.JSONDataType,
+			signer:   &empty.PrivateKey{},
 		},
 		"when backend PV doesn't exist": {
 			nfsPV: &corev1.PersistentVolume{
@@ -442,6 +614,7 @@ func TestCollectDeleteEvents(t *testing.T) {
 			},
 			isErrExpected: true,
 			dataType:      collectorinterface.JSONDataType,
+			signer:        &empty.PrivateKey{},
 		},
 		"when all nfs volume resources exist in the system but datatype is not supported": {
 			nfsPVC: &corev1.PersistentVolumeClaim{
@@ -495,6 +668,54 @@ func TestCollectDeleteEvents(t *testing.T) {
 			},
 			dataType:      collectorinterface.YAMLDataType,
 			isErrExpected: true,
+			signer:        &empty.PrivateKey{},
+		},
+		"when nfs pvc doesn't exist in cluster verify the signature of exported volume": {
+			nfsPV: &corev1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "pv5",
+					CreationTimestamp: metav1.Now(),
+					DeletionTimestamp: func() *metav1.Time { t := metav1.Now(); return &t }(),
+					Finalizers: []string{
+						"kubernetes.io/pv-protection",
+						"nfs.events.openebs.io/finalizer",
+					},
+				},
+				Spec: corev1.PersistentVolumeSpec{
+					ClaimRef: &corev1.ObjectReference{
+						Name:      "pvc5",
+						Namespace: "ns1",
+					},
+				},
+			},
+			backendPVC: &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "nfs-pv5",
+					Namespace:         "openebs",
+					CreationTimestamp: metav1.Now(),
+					DeletionTimestamp: func() *metav1.Time { t := metav1.Now(); return &t }(),
+					Finalizers: []string{
+						"nfs.events.openebs.io/finalizer",
+					},
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					VolumeName: "backend-pv5",
+				},
+			},
+			backendPV: &corev1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "backend-pv5",
+					CreationTimestamp: metav1.Now(),
+					Finalizers: []string{
+						"kubernetes.io/pv-protection",
+						"nfs.events.openebs.io/finalizer",
+					},
+				},
+			},
+			dataType:         collectorinterface.JSONDataType,
+			signer:           f.signer,
+			unsigner:         f.unsigner,
+			isValidSignature: true,
 		},
 	}
 	for name, test := range tests {
@@ -513,6 +734,7 @@ func TestCollectDeleteEvents(t *testing.T) {
 				nfsServerNamespace: "openebs",
 				annotationPrefix:   "nfs.",
 				dataType:           test.dataType,
+				signer:             test.signer,
 			}
 			str, err := nfsVolume.CollectDeleteEvents()
 			if test.isErrExpected && err == nil {
@@ -543,13 +765,26 @@ func TestCollectDeleteEvents(t *testing.T) {
 				if data.VolumeDeleted.BackingPVC == nil {
 					t.Fatalf("%q test failed expected backend PV should exist", name)
 				}
+
+				if test.unsigner != nil {
+					err = f.verifySignature(data.VolumeDeleted, data.Signature)
+					if test.isValidSignature && err != nil {
+						t.Fatalf("%q test failed expected valid signature but got error: %v", name, err)
+					}
+					if !test.isValidSignature && err == nil {
+						t.Fatalf("%q test failed mismatch of signatures", name)
+					}
+				}
 			}
 		})
 	}
 }
 
 func TestAnnotateCreateEvent(t *testing.T) {
-	f := newFixture()
+	f, err := newFixture()
+	if err != nil {
+		t.Fatalf("failed to get fixture error: %v", err)
+	}
 	tests := map[string]struct {
 		nfsPV         *corev1.PersistentVolume
 		isErrExpected bool
@@ -646,7 +881,10 @@ func TestAnnotateCreateEvent(t *testing.T) {
 }
 
 func TestAnnotateDeleteEvent(t *testing.T) {
-	f := newFixture()
+	f, err := newFixture()
+	if err != nil {
+		t.Fatalf("failed to get fixture error: %v", err)
+	}
 	tests := map[string]struct {
 		nfsPV         *corev1.PersistentVolume
 		isErrExpected bool
@@ -745,7 +983,10 @@ func TestAnnotateDeleteEvent(t *testing.T) {
 }
 
 func RemoveEventFinalizer(t *testing.T) {
-	f := newFixture()
+	f, err := newFixture()
+	if err != nil {
+		t.Fatalf("failed to get fixture error: %v", err)
+	}
 	tests := map[string]struct {
 		nfsPVC        *corev1.PersistentVolumeClaim
 		nfsPV         *corev1.PersistentVolume

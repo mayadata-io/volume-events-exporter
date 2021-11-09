@@ -220,12 +220,10 @@ func (n *NFS) verifySignature(obj interface{}, signature string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	klog.Infof("[Debug] going to verify signature")
 	err = n.Unsigner.Unsign(data, sigInBytes)
 	if err != nil {
 		return false, err
 	}
-	klog.Infof("[Debug] Verified the signature")
 	return true, nil
 }
 

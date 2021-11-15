@@ -24,7 +24,7 @@ import (
 	"github.com/mayadata-io/volume-events-exporter/tests/server"
 	"github.com/pkg/errors"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 // Service implements the endpoints that are

@@ -1,6 +1,9 @@
 # volume-events-exporter
 [![Build Status](https://github.com/mayadata-io/volume-events-exporter/actions/workflows/build.yml/badge.svg)](https://github.com/mayadata-io/volume-events-exporter/actions/workflows/build.yml)
 [![Go Report](https://goreportcard.com/badge/github.com/mayadata-io/volume-events-exporter)](https://goreportcard.com/report/github.com/mayadata-io/volume-events-exporter)
+[![Releases](https://img.shields.io/github/v/release/mayadata-io/volume-events-exporter.svg?include_prereleases&style=flat-square)](https://github.com/mayadata-io/volume-events-exporter/releases)
+[![LICENSE](https://img.shields.io/github/license/mayadata-io/volume-events-exporter.svg?style=flat-square)](https://github.com/mayadata-io/volume-events-exporter/blob/develop/LICENSE)
+
 
 <p align="justify">
 <strong>Volume Events Exporter</strong> can be used to export the volume events

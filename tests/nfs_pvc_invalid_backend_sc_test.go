@@ -104,7 +104,6 @@ var _ = Describe("TEST NFS PVC WITH INVALID BACKEND STORAGECLASS", func() {
 			Expect(pvcObj.Status.Phase).To(Equal(corev1.ClaimPending), "while verifying NFS PVC claim phase")
 
 			var isExpectedEventExist bool
-			maxRetryCount := 15
 			backendPVCName = "nfs-pvc-" + string(pvcObj.UID)
 			for retries := 0; retries < maxRetryCount; retries++ {
 				// Verify for provision failure events on PVC

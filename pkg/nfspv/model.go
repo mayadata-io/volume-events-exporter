@@ -23,11 +23,13 @@ import (
 // NFSCreateVolumeData holds create volume information to send to server
 type NFSCreateVolumeData struct {
 	VolumeProvisioned *NFSVolumeData `json:"volume_provisioned"`
+	Signature         string         `json:"signature"`
 }
 
 // NFSDeleteVolumeData holds delete volume information to send to server
 type NFSDeleteVolumeData struct {
 	VolumeDeleted *NFSVolumeData `json:"volume_deleted"`
+	Signature     string         `json:"signature"`
 }
 
 // NFSVolumeData holds the information about NFS & corresponding backend volumes

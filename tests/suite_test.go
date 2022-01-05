@@ -20,12 +20,13 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"path/filepath"
 	"time"
 
 	"os"
 	"testing"
 
-	"github.com/ghodss/yaml"
+	"github.com/mayadata-io/volume-events-exporter/pkg/sign"
 	"github.com/mayadata-io/volume-events-exporter/tests/nfs"
 	"github.com/mayadata-io/volume-events-exporter/tests/server"
 	"github.com/mayadata-io/volume-events-exporter/tests/server/rest"
@@ -72,6 +73,18 @@ var (
 	// of occurred events and if everything is good, test will remove finalizer
 	// manually
 	integrationTestFinalizer = "it.nfs.openebs.io/test-protection"
+
+	// signingKeyDir holds the path to directory which contains signingKeys
+	signingKeyDir string
+
+	// signingPrivateKeyPath holds path to file which contains private key
+	signingPrivateKeyPath string
+
+	// signingPublicKeyPath holds path to file which contains public key
+	signingPublicKeyPath string
+
+	// fakeSigningPrivateKeyPath holds path to file which contains valid private key
+	fakeSigningPrivateKeyPath string
 )
 
 func TestSource(t *testing.T) {
@@ -88,7 +101,7 @@ func init() {
 
 var _ = BeforeSuite(func() {
 	var err error
-	flag.Parse()
+	// flag.Parse()
 
 	if err := initK8sClient(kubeConfigPath); err != nil {
 		panic(fmt.Sprintf("failed to initialize k8s client err=%s", err))
@@ -99,6 +112,12 @@ var _ = BeforeSuite(func() {
 			panic(fmt.Sprintf("failed to get externalIP address, err: %s", err))
 		}
 	}
+
+	signingKeyDir, err = createSingingKeyDirectory()
+	Expect(err).To(BeNil(), "while creating signing directory")
+
+	err = generateRSAKeys()
+	Expect(err).To(BeNil(), "while generating RSA key pairs")
 
 	serverIface, err = newServer(ipAddress, port, serverType)
 	Expect(err).To(BeNil(), "while instantiating the new server")
@@ -134,6 +153,10 @@ var _ = AfterSuite(func() {
 })
 
 func newServer(address string, port int, serverType string) (server.ServerInterface, error) {
+	unsigner, err := sign.LoadPublicKeyFromPath(signingPublicKeyPath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to load public key")
+	}
 	switch serverType {
 	case "rest":
 		return rest.NewRestServer(rest.ServerConfig{
@@ -144,120 +167,11 @@ func newServer(address string, port int, serverType string) (server.ServerInterf
 			Clientset:  Client.Interface,
 			EventsReceiver: &nfs.NFS{
 				Clientset: Client.Interface,
+				Unsigner:  unsigner,
 			},
 		})
 	}
 	return nil, errors.Errorf("Unsupported server type %s", serverType)
-}
-
-// addOrUpdateEventControllerSidecar will add volume-event-controller side car only
-// if container doesn't exist else updates the CALLBACK_URL and CALLBACK_TOKEN
-func addEventControllerSideCar(deploymentNamespace, deploymentName string) error {
-	deployObj, err := Client.getDeployment(deploymentNamespace, deploymentName)
-	if err != nil {
-		return err
-	}
-	var isVolumeEventsCollectorExist bool
-	volumeEventsCollector := corev1.Container{
-		Name:  "volume-events-collector",
-		Image: "mayadataio/volume-events-exporter:ci",
-		Args: []string{
-			"--leader-election=false",
-			"--generate-k8s-events=true",
-		},
-		Env: []corev1.EnvVar{
-			{
-				Name:  "OPENEBS_IO_NFS_SERVER_NS",
-				Value: OpenEBSNamespace,
-			},
-			{
-				Name:  "CALLBACK_URL",
-				Value: serverIface.GetEventsReceiverEndpoint(),
-			},
-			{
-				Name:  "CALLBACK_TOKEN",
-				Value: serverIface.GetToken(),
-			},
-		},
-	}
-
-	for idx, container := range deployObj.Spec.Template.Spec.Containers {
-		if container.Name == volumeEventsCollector.Name {
-			deployObj.Spec.Template.Spec.Containers[idx] = volumeEventsCollector
-			isVolumeEventsCollectorExist = true
-			break
-		}
-	}
-	if !isVolumeEventsCollectorExist {
-		deployObj.Spec.Template.Spec.Containers = append(deployObj.Spec.Template.Spec.Containers, volumeEventsCollector)
-	}
-	updatedDeployObj, err := Client.updateDeployment(deployObj)
-	if err != nil {
-		return err
-	}
-	return Client.waitForDeploymentRollout(updatedDeployObj.Namespace, updatedDeployObj.Name)
-}
-
-func removeEventsCollectorSidecar(deploymentNamespace, deploymentName string) error {
-	var isVolumeEventsCollectorExist bool
-	var index int
-
-	deployObj, err := Client.getDeployment(deploymentNamespace, deploymentName)
-	if err != nil {
-		return err
-	}
-
-	for idx, container := range deployObj.Spec.Template.Spec.Containers {
-		if container.Name == "volume-events-collector" {
-			index = idx
-			isVolumeEventsCollectorExist = true
-		}
-	}
-	// Remove volume events collector sidecar
-	if !isVolumeEventsCollectorExist {
-		return nil
-	}
-
-	deployObj.Spec.Template.Spec.Containers = append(deployObj.Spec.Template.Spec.Containers[:index], deployObj.Spec.Template.Spec.Containers[index+1:]...)
-	updatedDeployObj, err := Client.updateDeployment(deployObj)
-	if err != nil {
-		return err
-	}
-	return Client.waitForDeploymentRollout(updatedDeployObj.Namespace, updatedDeployObj.Name)
-}
-
-// updateNFSHookConfig will update the NFS hook configuration as
-// per test details
-func updateNFSHookConfig(namespace, name string) error {
-	hookConfigMap, err := Client.getConfigMap(namespace, name)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get configmap %s/%s", namespace, name)
-	}
-	var hook Hook
-	hookData, isConfigExist := hookConfigMap.Data[nfsHookConfigDataKey]
-	if !isConfigExist {
-		return errors.Errorf("hook configmap=%s/%s doesn't have data field=%s", namespace, name, nfsHookConfigDataKey)
-	}
-
-	err = yaml.Unmarshal([]byte(hookData), &hook)
-	if err != nil {
-		return err
-	}
-	addHookConfig, isAddExist := hook.Config[ActionAddOnCreateVolumeEvent]
-	if !isAddExist {
-		return errors.Errorf("%s configuration doesn't exist in hook %s/%s", ActionAddOnCreateVolumeEvent, namespace, name)
-	}
-	addHookConfig.BackendPVCConfig.Finalizers = append(addHookConfig.BackendPVCConfig.Finalizers, integrationTestFinalizer)
-	hook.Config[ActionAddOnCreateVolumeEvent] = addHookConfig
-
-	updatedHookConfigInBytes, err := yaml.Marshal(hook)
-	if err != nil {
-		return err
-	}
-
-	hookConfigMap.Data[nfsHookConfigDataKey] = string(updatedHookConfigInBytes)
-	_, err = Client.updateConfigMap(hookConfigMap)
-	return err
 }
 
 // externalIP will fetch the IP from ifconfig
@@ -296,4 +210,19 @@ func externalIP() (string, error) {
 		}
 	}
 	return "", errors.New("are you connected to the network?")
+}
+
+func createSingingKeyDirectory() (string, error) {
+	if signingKeyDir != "" {
+		return signingKeyDir, nil
+	}
+	dirPath, err := os.MkdirTemp(os.TempDir(), "rsa-keys")
+	if err != nil {
+		return "", err
+	}
+	signingKeyDir = dirPath
+	signingPrivateKeyPath = filepath.Join(signingKeyDir, "id_rsa_private")
+	signingPublicKeyPath = filepath.Join(signingKeyDir, "id_rsa.pub")
+	fakeSigningPrivateKeyPath = filepath.Join(signingKeyDir, "id_rsa_fake_private")
+	return signingKeyDir, nil
 }

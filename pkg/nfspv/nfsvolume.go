@@ -18,11 +18,13 @@ package nfspv
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 
 	"github.com/mayadata-io/volume-events-exporter/pkg/collectorinterface"
 	"github.com/mayadata-io/volume-events-exporter/pkg/env"
 	"github.com/mayadata-io/volume-events-exporter/pkg/helper"
+	"github.com/mayadata-io/volume-events-exporter/pkg/sign"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -55,6 +57,10 @@ type nfsVolume struct {
 	// dataType represents the type of the data that server
 	// can understand. As of now JSON is supported
 	dataType collectorinterface.DataType
+	// signer will be set only when valid key signing key is provided
+	signer sign.Signer
+	// isSigningRequired defines whether signing data is required or not
+	isSigningRequired bool
 }
 
 func NewNFSVolume(
@@ -62,7 +68,12 @@ func NewNFSVolume(
 	pvcLister corev1listers.PersistentVolumeClaimLister,
 	pvLister corev1listers.PersistentVolumeLister,
 	pvObj *corev1.PersistentVolume,
-	dataType collectorinterface.DataType) collectorinterface.VolumeEventCollector {
+	dataType collectorinterface.DataType) (collectorinterface.VolumeEventCollector, error) {
+	signer, err := sign.LoadPrivateKeyFromPath(env.GetSigningKeyPath())
+	if err != nil && !sign.IsEmptyPathError(err) {
+		return nil, err
+	}
+
 	return &nfsVolume{
 		clientset:          clientset,
 		pvcLister:          pvcLister,
@@ -71,7 +82,9 @@ func NewNFSVolume(
 		nfsServerNamespace: env.GetNFSServerNamespace(),
 		annotationPrefix:   "nfs.",
 		dataType:           dataType,
-	}
+		signer:             signer,
+		isSigningRequired:  signer != nil,
+	}, nil
 }
 
 // CollectCreateEvents returns the serialized data(JSON/YAML) with
@@ -83,6 +96,9 @@ func NewNFSVolume(
 //		 timestamp for create event we are mutating deletion timestamp
 //		 fields with nil value.
 func (n *nfsVolume) CollectCreateEvents() (string, error) {
+	var signedKey string
+	var err error
+
 	volumeData, err := n.getVolumeData()
 	if err != nil {
 		return "", err
@@ -106,9 +122,18 @@ func (n *nfsVolume) CollectCreateEvents() (string, error) {
 	volumeData.BackingPV.DeletionTimestamp = nil
 	volumeData.BackingPV.DeletionGracePeriodSeconds = nil
 
+	if n.isSigningRequired {
+		signedKey, err = n.sign(volumeData)
+		if err != nil {
+			return "", err
+		}
+	}
+
 	createData := &NFSCreateVolumeData{
 		VolumeProvisioned: volumeData,
+		Signature:         signedKey,
 	}
+
 	rawData, err := json.Marshal(createData)
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to marshal create volume events")
@@ -117,6 +142,9 @@ func (n *nfsVolume) CollectCreateEvents() (string, error) {
 }
 
 func (n *nfsVolume) CollectDeleteEvents() (string, error) {
+	var signedKey string
+	var err error
+
 	if !n.isSupportedDataType() {
 		return "", errors.Errorf("data type %q is not supported. Supported types %v", n.dataType, supportedDataTypes)
 	}
@@ -126,10 +154,19 @@ func (n *nfsVolume) CollectDeleteEvents() (string, error) {
 		return "", err
 	}
 
-	createData := &NFSDeleteVolumeData{
-		VolumeDeleted: volumeData,
+	if n.isSigningRequired {
+		signedKey, err = n.sign(volumeData)
+		if err != nil {
+			return "", err
+		}
 	}
-	rawData, err := json.Marshal(createData)
+
+	deleteData := &NFSDeleteVolumeData{
+		VolumeDeleted: volumeData,
+		Signature:     signedKey,
+	}
+
+	rawData, err := json.Marshal(deleteData)
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to marshal delete volume events")
 	}
@@ -301,4 +338,15 @@ func (n *nfsVolume) isSupportedDataType() bool {
 	default:
 		return false
 	}
+}
+
+func (n *nfsVolume) sign(obj interface{}) (string, error) {
+	signedBytes, err := n.signer.Sign(obj)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to sign the data")
+	}
+	if signedBytes != nil {
+		return base64.StdEncoding.EncodeToString(signedBytes), nil
+	}
+	return "", nil
 }

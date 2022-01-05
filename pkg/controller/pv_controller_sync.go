@@ -185,13 +185,11 @@ func (pController *PVEventController) getEventSender(pvObj *corev1.PersistentVol
 	}
 	switch casType {
 	case nfspv.OpenEBSNFSCASLabelValue:
-		return tokenauth.NewTokenClient(
-			nfspv.NewNFSVolume(
-				pController.kubeClientset,
-				pController.pvcLister,
-				pController.pvLister,
-				pvObj,
-				collectorinterface.JSONDataType)), nil
+		nfsVolumeCollector, err := nfspv.NewNFSVolume(pController.kubeClientset, pController.pvcLister, pController.pvLister, pvObj, collectorinterface.JSONDataType)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get nfs volume collector")
+		}
+		return tokenauth.NewTokenClient(nfsVolumeCollector), nil
 	}
 	return nil, errors.Errorf("event sender is not available for volume %s of CAS type %s", pvObj.Name, casType)
 }

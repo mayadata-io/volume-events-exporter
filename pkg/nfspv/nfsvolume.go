@@ -57,7 +57,10 @@ type nfsVolume struct {
 	// dataType represents the type of the data that server
 	// can understand. As of now JSON is supported
 	dataType collectorinterface.DataType
-	signer   sign.Signer
+	// signer will be set only when valid key signing key is provided
+	signer sign.Signer
+	// isSigningRequired defines whether signing data is required or not
+	isSigningRequired bool
 }
 
 func NewNFSVolume(
@@ -67,7 +70,7 @@ func NewNFSVolume(
 	pvObj *corev1.PersistentVolume,
 	dataType collectorinterface.DataType) (collectorinterface.VolumeEventCollector, error) {
 	signer, err := sign.LoadPrivateKeyFromPath(env.GetSigningKeyPath())
-	if err != nil {
+	if err != nil && !sign.IsEmptyPathError(err) {
 		return nil, err
 	}
 
@@ -80,6 +83,7 @@ func NewNFSVolume(
 		annotationPrefix:   "nfs.",
 		dataType:           dataType,
 		signer:             signer,
+		isSigningRequired:  signer != nil,
 	}, nil
 }
 
@@ -92,6 +96,9 @@ func NewNFSVolume(
 //		 timestamp for create event we are mutating deletion timestamp
 //		 fields with nil value.
 func (n *nfsVolume) CollectCreateEvents() (string, error) {
+	var signedKey string
+	var err error
+
 	volumeData, err := n.getVolumeData()
 	if err != nil {
 		return "", err
@@ -115,9 +122,11 @@ func (n *nfsVolume) CollectCreateEvents() (string, error) {
 	volumeData.BackingPV.DeletionTimestamp = nil
 	volumeData.BackingPV.DeletionGracePeriodSeconds = nil
 
-	signedKey, err := n.sign(volumeData)
-	if err != nil {
-		return "", err
+	if n.isSigningRequired {
+		signedKey, err = n.sign(volumeData)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	createData := &NFSCreateVolumeData{
@@ -133,6 +142,9 @@ func (n *nfsVolume) CollectCreateEvents() (string, error) {
 }
 
 func (n *nfsVolume) CollectDeleteEvents() (string, error) {
+	var signedKey string
+	var err error
+
 	if !n.isSupportedDataType() {
 		return "", errors.Errorf("data type %q is not supported. Supported types %v", n.dataType, supportedDataTypes)
 	}
@@ -142,9 +154,11 @@ func (n *nfsVolume) CollectDeleteEvents() (string, error) {
 		return "", err
 	}
 
-	signedKey, err := n.sign(volumeData)
-	if err != nil {
-		return "", err
+	if n.isSigningRequired {
+		signedKey, err = n.sign(volumeData)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	deleteData := &NFSDeleteVolumeData{

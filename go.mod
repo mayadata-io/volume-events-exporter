@@ -5,10 +5,10 @@ go 1.16
 require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/ghodss/yaml v1.0.0
-	github.com/google/go-cmp v0.5.4
+	github.com/google/go-cmp v0.5.5
 	github.com/gorilla/mux v1.8.0
-	github.com/onsi/ginkgo v1.11.0
-	github.com/onsi/gomega v1.7.0
+	github.com/onsi/ginkgo v1.16.4
+	github.com/onsi/gomega v1.17.0
 	github.com/openebs/api/v2 v2.3.0
 	github.com/pkg/errors v0.9.1
 	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83

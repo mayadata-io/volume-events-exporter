@@ -22,15 +22,14 @@ import (
 	"encoding/pem"
 	"io/ioutil"
 
-	"github.com/mayadata-io/volume-events-exporter/pkg/encrypt/empty"
-	rsawrapper "github.com/mayadata-io/volume-events-exporter/pkg/encrypt/rsa"
+	rsawrapper "github.com/mayadata-io/volume-events-exporter/pkg/sign/rsa"
 	"github.com/pkg/errors"
 )
 
 // LoadPublicKeyFromPath will load and parse PEM public key from given path
 func LoadPublicKeyFromPath(path string) (Unsigner, error) {
 	if path == "" {
-		return &empty.PublicKey{}, nil
+		return nil, &SignError{reason: emptyPathError}
 	}
 	publicKeyInBytes, err := ioutil.ReadFile(path)
 	if err != nil {

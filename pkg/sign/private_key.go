@@ -22,8 +22,7 @@ import (
 	"encoding/pem"
 	"io/ioutil"
 
-	"github.com/mayadata-io/volume-events-exporter/pkg/encrypt/empty"
-	rsawrapper "github.com/mayadata-io/volume-events-exporter/pkg/encrypt/rsa"
+	rsawrapper "github.com/mayadata-io/volume-events-exporter/pkg/sign/rsa"
 	"github.com/pkg/errors"
 )
 
@@ -31,7 +30,7 @@ import (
 // private key
 func LoadPrivateKeyFromPath(path string) (Signer, error) {
 	if path == "" {
-		return &empty.PrivateKey{}, nil
+		return nil, &SignError{reason: emptyPathError}
 	}
 	privateKeyInBytes, err := ioutil.ReadFile(path)
 	if err != nil {

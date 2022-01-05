@@ -21,6 +21,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -91,7 +92,8 @@ func TestLoadPublicKeyFromPath(t *testing.T) {
 			isErrExpected: true,
 		},
 		"When path is not provided": {
-			path: "",
+			path:          "",
+			isErrExpected: true,
 		},
 		"When public key exist in SSH format": {
 			path: func(path string) string {
@@ -114,4 +116,16 @@ func TestLoadPublicKeyFromPath(t *testing.T) {
 		}
 	}
 	os.RemoveAll(testDir)
+}
+
+func TestIsEmptyPathError(t *testing.T) {
+	err1 := &SignError{reason: emptyPathError}
+	err2 := fmt.Errorf("Some other error")
+	if !IsEmptyPathError(err1) {
+		t.Fatalf("Expected error to be %s but got %v", emptyPathError, err1)
+	}
+
+	if IsEmptyPathError(err2) {
+		t.Fatalf("Expected error not to be %s but got %v", emptyPathError, err2)
+	}
 }

@@ -21,8 +21,8 @@ import (
 	"io/ioutil"
 
 	"github.com/ghodss/yaml"
-	"github.com/mayadata-io/volume-events-exporter/pkg/encrypt/rsa"
 	"github.com/mayadata-io/volume-events-exporter/pkg/env"
+	"github.com/mayadata-io/volume-events-exporter/pkg/sign/rsa"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 )

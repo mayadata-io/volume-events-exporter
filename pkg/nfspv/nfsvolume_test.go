@@ -27,10 +27,11 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/mayadata-io/volume-events-exporter/pkg/collectorinterface"
-	"github.com/mayadata-io/volume-events-exporter/pkg/encrypt/empty"
-	rsawrapper "github.com/mayadata-io/volume-events-exporter/pkg/encrypt/rsa"
+
+	// "github.com/mayadata-io/volume-events-exporter/pkg/encrypt/empty"
 	"github.com/mayadata-io/volume-events-exporter/pkg/helper"
 	"github.com/mayadata-io/volume-events-exporter/pkg/sign"
+	rsawrapper "github.com/mayadata-io/volume-events-exporter/pkg/sign/rsa"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -205,7 +206,7 @@ func TestCollectCreateEvents(t *testing.T) {
 				},
 			},
 			dataType: collectorinterface.JSONDataType,
-			signer:   &empty.PrivateKey{},
+			signer:   nil,
 		},
 		"when nfs pvc doesn't exist": {
 			nfsPV: &corev1.PersistentVolume{
@@ -250,7 +251,7 @@ func TestCollectCreateEvents(t *testing.T) {
 				},
 			},
 			dataType: collectorinterface.JSONDataType,
-			signer:   &empty.PrivateKey{},
+			signer:   nil,
 		},
 		"when backend PV doesn't exist": {
 			nfsPV: &corev1.PersistentVolume{
@@ -289,7 +290,7 @@ func TestCollectCreateEvents(t *testing.T) {
 			},
 			isErrExpected: true,
 			dataType:      collectorinterface.JSONDataType,
-			signer:        &empty.PrivateKey{},
+			signer:        nil,
 		},
 		"when all nfs volume resources exist in the system with valid signer": {
 			nfsPVC: &corev1.PersistentVolumeClaim{
@@ -419,6 +420,7 @@ func TestCollectCreateEvents(t *testing.T) {
 				annotationPrefix:   "nfs.",
 				dataType:           test.dataType,
 				signer:             test.signer,
+				isSigningRequired:  test.signer != nil,
 			}
 			str, err := nfsVolume.CollectCreateEvents()
 			if test.isErrExpected && err == nil {
@@ -530,7 +532,7 @@ func TestCollectDeleteEvents(t *testing.T) {
 				},
 			},
 			dataType: collectorinterface.JSONDataType,
-			signer:   &empty.PrivateKey{},
+			signer:   nil,
 		},
 		"when nfs pvc doesn't exist in cluster": {
 			nfsPV: &corev1.PersistentVolume{
@@ -575,7 +577,7 @@ func TestCollectDeleteEvents(t *testing.T) {
 				},
 			},
 			dataType: collectorinterface.JSONDataType,
-			signer:   &empty.PrivateKey{},
+			signer:   nil,
 		},
 		"when backend PV doesn't exist": {
 			nfsPV: &corev1.PersistentVolume{
@@ -614,7 +616,7 @@ func TestCollectDeleteEvents(t *testing.T) {
 			},
 			isErrExpected: true,
 			dataType:      collectorinterface.JSONDataType,
-			signer:        &empty.PrivateKey{},
+			signer:        nil,
 		},
 		"when all nfs volume resources exist in the system but datatype is not supported": {
 			nfsPVC: &corev1.PersistentVolumeClaim{
@@ -668,7 +670,7 @@ func TestCollectDeleteEvents(t *testing.T) {
 			},
 			dataType:      collectorinterface.YAMLDataType,
 			isErrExpected: true,
-			signer:        &empty.PrivateKey{},
+			signer:        nil,
 		},
 		"when nfs pvc doesn't exist in cluster verify the signature of exported volume": {
 			nfsPV: &corev1.PersistentVolume{
@@ -735,6 +737,7 @@ func TestCollectDeleteEvents(t *testing.T) {
 				annotationPrefix:   "nfs.",
 				dataType:           test.dataType,
 				signer:             test.signer,
+				isSigningRequired:  test.signer != nil,
 			}
 			str, err := nfsVolume.CollectDeleteEvents()
 			if test.isErrExpected && err == nil {

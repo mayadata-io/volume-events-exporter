@@ -70,7 +70,8 @@ func TestLoadPrivateKeyFromPath(t *testing.T) {
 			isErrExpected: true,
 		},
 		"When path is empty to load private key": {
-			path: "",
+			path:          "",
+			isErrExpected: true,
 		},
 	}
 	for name, test := range tests {

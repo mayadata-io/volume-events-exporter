@@ -101,7 +101,7 @@ func init() {
 
 var _ = BeforeSuite(func() {
 	var err error
-	flag.Parse()
+	// flag.Parse()
 
 	if err := initK8sClient(kubeConfigPath); err != nil {
 		panic(fmt.Sprintf("failed to initialize k8s client err=%s", err))
